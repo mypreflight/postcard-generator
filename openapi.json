@@ -1,0 +1,266 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "MyPreflight postcard generator",
+    "description": "A DigitalOcean Function that draws a minimalist flat-vector travel poster for a city with the OpenAI image API and answers with the encoded image.\n\nDeployed as a functions component of the `mypreflight` App Platform app. Every request must carry the `X-Require-Whisk-Auth` header declared as `webSecure` in project.yml; the platform rejects the request before the function runs otherwise.\n\nThe image comes back base64-encoded inside the JSON body rather than as raw bytes, because a function result may not exceed 1 MB and the caller needs the resolved prompt and render settings alongside the artwork.",
+    "version": "1.0.0",
+    "license": {
+      "name": "Unlicense",
+      "url": "https://opensource.org/licenses/Unlicense"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://<app-host>/postcard",
+      "description": "App Platform ingress route"
+    },
+    {
+      "url": "http://localhost:3001",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/postcard/generate": {
+      "get": {
+        "summary": "Draw a travel poster for a city",
+        "description": "Renders the city with the poster brief and returns the encoded image together with the prompt and render settings it was drawn from. Identical requests are served from an in-memory cache for a day, for as long as the function instance stays warm.",
+        "operationId": "generatePostcard",
+        "parameters": [
+          {
+            "name": "city",
+            "in": "query",
+            "required": true,
+            "description": "City to draw. Latin script only, at most 64 characters and 5 words: the value is interpolated into the prompt, so anything sentence-shaped is refused before an image is paid for.",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "example": "Munich"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "description": "Resolution as WIDTHxHEIGHT. Both sides must be divisible by 16 and between 256 and 3840, within a 1:3 to 3:1 aspect ratio and 3840x2160 pixels in total. Defaults to POSTCARD_SIZE.",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{3,4}x\\d{3,4}$"
+            },
+            "example": "1152x1536"
+          },
+          {
+            "name": "quality",
+            "in": "query",
+            "required": false,
+            "description": "Render quality. Defaults to POSTCARD_QUALITY.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "low",
+                "medium",
+                "high"
+              ]
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "Encoding of the returned image. Defaults to POSTCARD_FORMAT. `webp` is deliberately absent: gpt-image-2 accepts it and answers with png bytes anyway.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "jpeg",
+                "png"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The postcard, base64-encoded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Postcard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The arguments are malformed. No image was drawn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "OpenAI refused to draw the prompt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "OpenAI is rate limiting image generation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Anything unexpected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "OpenAI is unreachable, answered without image data, or the postcard is too large to return as a function result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "functionSecret": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Require-Whisk-Auth",
+        "description": "The shared secret declared as `webSecure` in project.yml."
+      }
+    },
+    "schemas": {
+      "Postcard": {
+        "type": "object",
+        "required": [
+          "city",
+          "model",
+          "size",
+          "quality",
+          "format",
+          "contentType",
+          "bytes",
+          "prompt",
+          "image"
+        ],
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "The city as it was asked for, trimmed.",
+            "example": "Munich"
+          },
+          "model": {
+            "type": "string",
+            "description": "The OpenAI image model that drew it.",
+            "example": "gpt-image-2"
+          },
+          "size": {
+            "type": "string",
+            "example": "1152x1536"
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "jpeg",
+              "png"
+            ]
+          },
+          "contentType": {
+            "type": "string",
+            "description": "Media type to serve the decoded image as.",
+            "enum": [
+              "image/jpeg",
+              "image/png"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "description": "Size of the decoded image, so a caller can budget before decoding.",
+            "example": 312044
+          },
+          "prompt": {
+            "type": "string",
+            "description": "The full prompt the image was drawn from, city bound in."
+          },
+          "image": {
+            "type": "string",
+            "format": "byte",
+            "description": "The image, base64-encoded."
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "status"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "BAD_REQUEST",
+                  "POSTCARD_REJECTED",
+                  "OPENAI_RATE_LIMITED",
+                  "OPENAI_UNAVAILABLE",
+                  "POSTCARD_UNREADABLE",
+                  "POSTCARD_TOO_LARGE",
+                  "INTERNAL_ERROR"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "status": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "functionSecret": []
+    }
+  ]
+}

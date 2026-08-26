@@ -1,0 +1,53 @@
+name: 'integrity'
+
+on:
+  pull_request:
+
+jobs:
+  files:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: 'Check for CRLF line endings'
+        uses: gi-org-pl/check-crlf-action@v1
+      - name: 'Check for file permission changes'
+        uses: gi-org-pl/check-file-permissions-action@v1
+      - name: 'Check generate version is unique'
+        uses: gi-org-pl/check-version-action@v1
+        with:
+          version: "$(jq -r '.version' packages/postcard/generate/package.json)"
+  code:
+    runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        function: ['generate']
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@v7
+      - name: 'Copy environment variables'
+        run: 'cp .env.dist .env'
+      - name: 'Run docker compose environment'
+        run: docker compose up -d --build --wait
+      - name: 'Run static code analysis'
+        run: docker compose exec ${{ matrix.function }} npm run lint
+      - name: 'Run type check'
+        run: docker compose exec ${{ matrix.function }} npm run typecheck
+      - name: 'Run unit tests'
+        run: docker compose exec ${{ matrix.function }} npm test
+      - name: 'Run functional tests'
+        run: docker compose exec ${{ matrix.function }} npm run test:functional
+      - name: 'Build the function the way DigitalOcean does'
+        run: |
+          docker compose exec ${{ matrix.function }} sh -c '
+            rm -rf /tmp/slice && mkdir -p /tmp/slice
+            cp -r /app/packages/postcard/${{ matrix.function }} /tmp/slice/${{ matrix.function }}
+            rm -rf /tmp/slice/${{ matrix.function }}/lib /tmp/slice/${{ matrix.function }}/node_modules
+            /tmp/slice/${{ matrix.function }}/build.sh
+            test -f /tmp/slice/${{ matrix.function }}/lib/function.js
+            test ! -e /tmp/slice/${{ matrix.function }}/node_modules/jest
+            test ! -e /tmp/slice/${{ matrix.function }}/node_modules/@biomejs
+          '
