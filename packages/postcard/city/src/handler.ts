@@ -1,9 +1,10 @@
 import type { OpenAiClient } from "./client";
-import { PostcardTooLargeError, ProviderError } from "./errors";
+import { ProviderError } from "./errors";
 import { describeError, Logger, stackOf } from "./logger";
 import { buildPrompt } from "./prompt";
 import { type Defaults, parseRequest, type RequestParams } from "./request";
-import { CONTENT_TYPES, type Postcard, type PostcardRequest } from "./types";
+import type { SpacesClient } from "./spaces";
+import { CONTENT_TYPES, EXTENSIONS, type Postcard, type PostcardRequest } from "./types";
 
 export type HandlerParams = RequestParams;
 
@@ -12,13 +13,12 @@ export type HandlerResponse = {
   body: unknown;
 };
 
-const MAX_RESULT_BYTES = 1_000_000;
-
 const logger = new Logger("PostcardHandler");
 
 function describeRequest(params: HandlerParams): string {
   return [
     `city=${params.city ?? "-"}`,
+    `uuid=${params.uuid ?? "-"}`,
     params.size ? `size=${params.size}` : "",
     params.quality ? `quality=${params.quality}` : "",
     params.format ? `format=${params.format}` : "",
@@ -27,35 +27,35 @@ function describeRequest(params: HandlerParams): string {
     .join(" ");
 }
 
-async function draw(client: OpenAiClient, request: PostcardRequest): Promise<Postcard> {
+async function drawAndStore(client: OpenAiClient, spaces: SpacesClient, request: PostcardRequest): Promise<Postcard> {
   const prompt = buildPrompt(request.city);
   const image = await client.draw(request, prompt);
+  const contentType = CONTENT_TYPES[request.format];
+
+  const stored = await spaces.store(
+    `${request.uuid}.${EXTENSIONS[request.format]}`,
+    Buffer.from(image.base64, "base64"),
+    contentType,
+  );
 
   return {
     city: request.city,
+    uuid: request.uuid,
     model: client.model,
     size: request.size,
     quality: request.quality,
     format: request.format,
-    contentType: CONTENT_TYPES[request.format],
+    contentType,
     bytes: image.bytes,
     prompt,
-    image: image.base64,
+    key: stored.key,
+    url: stored.url,
   };
-}
-
-function withinResultLimit(postcard: Postcard): Postcard {
-  const encoded = Buffer.byteLength(JSON.stringify(postcard));
-
-  if (encoded > MAX_RESULT_BYTES) {
-    throw new PostcardTooLargeError(encoded, MAX_RESULT_BYTES);
-  }
-
-  return postcard;
 }
 
 export async function handleRequest(
   client: OpenAiClient,
+  spaces: SpacesClient,
   params: HandlerParams,
   defaults: Defaults,
 ): Promise<HandlerResponse> {
@@ -63,7 +63,7 @@ export async function handleRequest(
 
   try {
     const request = parseRequest(params, defaults);
-    const postcard = withinResultLimit(await draw(client, request));
+    const postcard = await drawAndStore(client, spaces, request);
 
     logger.log(`Served ${describeRequest(params)} in ${Date.now() - startedAt}ms.`);
 

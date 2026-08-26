@@ -2,7 +2,7 @@ import { AfterAll, Before, Given, Then } from "@cucumber/cucumber";
 import expect from "expect";
 import { resetClient } from "../../src/function";
 import { callsTo, lastPayload, reset, restoreFixtures, expect as stub } from "../_helper/mockserver";
-import { base64OfSize, errorResponse, imageResponse } from "../_helper/openai.fixture";
+import { errorResponse, imageResponse } from "../_helper/openai.fixture";
 
 Before(async () => {
   await reset();
@@ -11,10 +11,6 @@ Before(async () => {
 
 Given("OpenAI draws the postcard", async () => {
   await stub({ status: 200, body: imageResponse() });
-});
-
-Given("OpenAI draws a postcard of {int} kilobytes", async (kilobytes: number) => {
-  await stub({ status: 200, body: imageResponse(base64OfSize(kilobytes * 1024)) });
 });
 
 Given("OpenAI answers without image data", async () => {

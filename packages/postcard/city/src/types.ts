@@ -8,6 +8,7 @@ export type Format = (typeof FORMATS)[number];
 
 export type PostcardRequest = {
   city: string;
+  uuid: string;
   size: string;
   quality: Quality;
   format: Format;
@@ -19,8 +20,14 @@ export type RenderedImage = {
   bytes: number;
 };
 
+export type StoredObject = {
+  key: string;
+  url: string;
+};
+
 export type Postcard = {
   city: string;
+  uuid: string;
   model: string;
   size: string;
   quality: Quality;
@@ -28,10 +35,16 @@ export type Postcard = {
   contentType: string;
   bytes: number;
   prompt: string;
-  image: string;
+  key: string;
+  url: string;
 };
 
 export const CONTENT_TYPES: Record<Format, string> = {
   jpeg: "image/jpeg",
   png: "image/png",
+};
+
+export const EXTENSIONS: Record<Format, string> = {
+  jpeg: "jpg",
+  png: "png",
 };

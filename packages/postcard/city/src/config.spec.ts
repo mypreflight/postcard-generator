@@ -1,6 +1,18 @@
-import { readDefaults } from "./config";
+import { readDefaults, readSpacesOptions } from "./config";
 
-const KEYS = ["POSTCARD_SIZE", "POSTCARD_QUALITY", "POSTCARD_FORMAT", "POSTCARD_COMPRESSION"];
+const KEYS = [
+  "POSTCARD_SIZE",
+  "POSTCARD_QUALITY",
+  "POSTCARD_FORMAT",
+  "POSTCARD_COMPRESSION",
+  "SPACES_BUCKET",
+  "SPACES_REGION",
+  "SPACES_ENDPOINT",
+  "SPACES_KEY",
+  "SPACES_SECRET",
+  "SPACES_PREFIX",
+  "SPACES_ACL",
+];
 
 describe("readDefaults", () => {
   const original = { ...process.env };
@@ -38,5 +50,67 @@ describe("readDefaults", () => {
     process.env.POSTCARD_COMPRESSION = compression;
 
     expect(() => readDefaults()).toThrow(/POSTCARD_COMPRESSION/);
+  });
+});
+
+describe("readSpacesOptions", () => {
+  const original = { ...process.env };
+
+  beforeEach(() => {
+    for (const key of KEYS) {
+      delete process.env[key];
+    }
+
+    process.env.SPACES_BUCKET = "mypreflight-files";
+    process.env.SPACES_KEY = "key";
+    process.env.SPACES_SECRET = "secret";
+  });
+
+  afterAll(() => {
+    process.env = original;
+  });
+
+  it("derives the bucket endpoint from the bucket and the region", () => {
+    expect(readSpacesOptions()).toEqual({
+      endpoint: "https://mypreflight-files.fra1.digitaloceanspaces.com",
+      region: "fra1",
+      accessKey: "key",
+      secretKey: "secret",
+      prefix: "postcards/",
+      acl: "public-read",
+    });
+  });
+
+  it("follows the configured region into the endpoint", () => {
+    process.env.SPACES_REGION = "ams3";
+
+    expect(readSpacesOptions()).toMatchObject({
+      endpoint: "https://mypreflight-files.ams3.digitaloceanspaces.com",
+      region: "ams3",
+    });
+  });
+
+  it("lets an endpoint be pointed elsewhere, so the suite can stand a bucket in", () => {
+    process.env.SPACES_ENDPOINT = "http://openai-mock:1080/mypreflight-files";
+
+    expect(readSpacesOptions()).toMatchObject({ endpoint: "http://openai-mock:1080/mypreflight-files" });
+  });
+
+  it.each([
+    ["postcards", "postcards/"],
+    ["postcards/", "postcards/"],
+    ["/postcards", "postcards/"],
+    ["a/b", "a/b/"],
+    ["", ""],
+  ])("normalises a prefix of %p to %p", (configured, expected) => {
+    process.env.SPACES_PREFIX = configured;
+
+    expect(readSpacesOptions()).toMatchObject({ prefix: expected });
+  });
+
+  it.each(["SPACES_BUCKET", "SPACES_KEY", "SPACES_SECRET"])("fails loudly without %s", (key) => {
+    delete process.env[key];
+
+    expect(() => readSpacesOptions()).toThrow(new RegExp(key));
   });
 });
