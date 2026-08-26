@@ -19,7 +19,7 @@ flight:
 - renders a full-bleed vertical 3:4 travel poster with the [OpenAI image API][openai-images],
 - composes the whole brief — landmark, figures, palette, typography — from one city name, so a destination never needs
   a hand-made asset,
-- sets the city in uppercase with a short tagline in Polish, the platform's language,
+- sets the city in uppercase as the only lettering, in English,
 - refuses malformed arguments before a single image is paid for,
 - caches identical requests for a day, for as long as the instance stays warm.
 
