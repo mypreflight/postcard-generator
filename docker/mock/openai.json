@@ -13,5 +13,19 @@
       },
       "body": "{\"created\":1756224000,\"data\":[{\"b64_json\":\"/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==\"}]}"
     }
+  },
+  {
+    "httpRequest": {
+      "method": "PUT",
+      "path": "/mypreflight-files/.*"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "ETag": [
+          "\"d41d8cd98f00b204e9800998ecf8427e\""
+        ]
+      }
+    }
   }
 ]

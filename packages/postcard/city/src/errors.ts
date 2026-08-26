@@ -49,14 +49,20 @@ export class PostcardUnreadableError extends ProviderError {
   }
 }
 
-export class PostcardTooLargeError extends ProviderError {
+export class SpacesUnavailableError extends ProviderError {
   readonly status = 502;
-  readonly code = "POSTCARD_TOO_LARGE";
+  readonly code = "SPACES_UNAVAILABLE";
 
-  constructor(bytes: number, limit: number) {
-    super(
-      `The encoded postcard is ${bytes} bytes and a function result may not exceed ${limit}. ` +
-        "Ask for a smaller size, or for format=jpeg with a lower POSTCARD_COMPRESSION.",
-    );
+  constructor() {
+    super("The postcard was drawn but could not be stored.");
+  }
+}
+
+export class MisconfiguredError extends ProviderError {
+  readonly status = 500;
+  readonly code = "MISCONFIGURED";
+
+  constructor(reason: string) {
+    super(reason);
   }
 }

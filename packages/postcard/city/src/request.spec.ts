@@ -1,7 +1,9 @@
 import { BadRequestError } from "./errors";
-import { type Defaults, parseCity, parseFormat, parseQuality, parseRequest, parseSize } from "./request";
+import { type Defaults, parseCity, parseFormat, parseQuality, parseRequest, parseSize, parseUuid } from "./request";
 
 const defaults: Defaults = { size: "1152x1536", quality: "high", format: "jpeg", compression: 80 };
+
+const uuid = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
 
 describe("parseCity", () => {
   it("trims the name it was given", () => {
@@ -80,10 +82,47 @@ describe("parseFormat", () => {
   });
 });
 
+describe("parseUuid", () => {
+  it("accepts a uuid", () => {
+    expect(parseUuid("3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b")).toBe("3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b");
+  });
+
+  it("lowercases a uuid, so one object never lands under two names", () => {
+    expect(parseUuid("3F2A1B4C-5D6E-4F70-8A9B-0C1D2E3F4A5B")).toBe("3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b");
+  });
+
+  it("trims the surrounding whitespace", () => {
+    expect(parseUuid("  3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b  ")).toBe("3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b");
+  });
+
+  it.each([undefined, "", "   "])("refuses a missing uuid of %p", (value) => {
+    expect(() => parseUuid(value)).toThrow(/required/);
+  });
+
+  it.each([
+    "not-a-uuid",
+    "3f2a1b4c5d6e4f708a9b0c1d2e3f4a5b",
+    "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5",
+    "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5bb",
+    "3g2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b",
+  ])("refuses %p as a uuid", (value) => {
+    expect(() => parseUuid(value)).toThrow(/must be a uuid/);
+  });
+
+  it.each([
+    "../../etc/passwd",
+    "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b/../secret",
+    "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg",
+  ])("refuses %p, so nothing but a uuid can name an object", (value) => {
+    expect(() => parseUuid(value)).toThrow(/must be a uuid/);
+  });
+});
+
 describe("parseRequest", () => {
   it("fills every unasked-for field from the defaults", () => {
-    expect(parseRequest({ city: "Munich" }, defaults)).toEqual({
+    expect(parseRequest({ city: "Munich", uuid }, defaults)).toEqual({
       city: "Munich",
+      uuid,
       size: "1152x1536",
       quality: "high",
       format: "jpeg",
@@ -92,8 +131,9 @@ describe("parseRequest", () => {
   });
 
   it("lets a request override the defaults", () => {
-    expect(parseRequest({ city: "Munich", size: "1024x1024", quality: "low", format: "png" }, defaults)).toEqual({
+    expect(parseRequest({ city: "Munich", uuid, size: "1024x1024", quality: "low", format: "png" }, defaults)).toEqual({
       city: "Munich",
+      uuid,
       size: "1024x1024",
       quality: "low",
       format: "png",

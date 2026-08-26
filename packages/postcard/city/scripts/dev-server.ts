@@ -17,6 +17,7 @@ createServer((request, response) => {
 
   main({
     city: url.searchParams.get("city") ?? undefined,
+    uuid: url.searchParams.get("uuid") ?? undefined,
     size: url.searchParams.get("size") ?? undefined,
     quality: url.searchParams.get("quality") ?? undefined,
     format: url.searchParams.get("format") ?? undefined,

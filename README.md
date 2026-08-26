@@ -20,6 +20,7 @@ flight:
 - composes the whole brief — landmark, figures, palette, typography — from one city name, so a destination never needs
   a hand-made asset,
 - sets the city in uppercase as the only lettering, in English,
+- stores the poster in DigitalOcean Spaces under a uuid the caller chooses, and answers with where it landed,
 - refuses malformed arguments before a single image is paid for,
 - caches identical requests for a day, for as long as the instance stays warm.
 
@@ -79,10 +80,12 @@ This app uses docker-based virtualization to run. To set up the project, follow 
    answers a tiny stand-in image without spending anything:
 
    ```shell
-   curl "http://localhost:3001/?city=Munich"
+   curl "http://localhost:3001/?city=Munich&uuid=$(uuidgen | tr 'A-Z' 'a-z')"
    ```
 
-   Point `OPENAI_API_HOST` at `https://api.openai.com` and set a real `OPENAI_API_KEY` to draw for real.
+   `SPACES_ENDPOINT` points at the same mock, so nothing is uploaded either. Point `OPENAI_API_HOST` at
+   `https://api.openai.com` with a real `OPENAI_API_KEY`, and `SPACES_ENDPOINT` at the real bucket with a real
+   `SPACES_KEY` and `SPACES_SECRET`, to draw and store for real.
 
 ### On-demand by design
 
@@ -93,7 +96,7 @@ once per destination.
 
 ```shell
 curl -H "X-Require-Whisk-Auth: $SECRET" \
-  "https://<app-host>/postcard/postcard/city?city=Munich"
+  "https://<app-host>/postcard-generator/postcard/city?city=Munich&uuid=$UUID"
 ```
 
 Functions reach the network through the app's public ingress and cannot be placed on a private one — they support
@@ -120,15 +123,18 @@ the DigitalOcean API.
 | Argument  | Default              | Meaning                                                                        |
 | --------- | -------------------- | ------------------------------------------------------------------------------ |
 | `city`    | — (required)         | The city to draw.                                                              |
+| `uuid`    | — (required)         | Names the stored object. Lowercased; anything but a uuid is refused.            |
 | `size`    | `POSTCARD_SIZE`      | `WIDTHxHEIGHT`, both sides divisible by 16, within a 1:3 to 3:1 aspect ratio.   |
 | `quality` | `POSTCARD_QUALITY`   | `auto`, `low`, `medium` or `high`.                                             |
 | `format`  | `POSTCARD_FORMAT`    | `jpeg` or `png`.                                                               |
 
-It answers with the artwork and everything it was drawn from, so a caller can reproduce or attribute the render later:
+It answers with where the postcard was stored and everything it was drawn from, so a caller can reproduce or
+attribute the render later:
 
 ```json
 {
   "city": "Munich",
+  "uuid": "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b",
   "model": "gpt-image-2",
   "size": "1152x1536",
   "quality": "high",
@@ -136,34 +142,66 @@ It answers with the artwork and everything it was drawn from, so a caller can re
   "contentType": "image/jpeg",
   "bytes": 312044,
   "prompt": "TARGET_CITY = \"Munich\" Full-bleed vertical 3:4 minimalist flat-vector travel art poster …",
-  "image": "/9j/4AAQSkZJRgABAQEAYABgAAD…"
+  "key": "postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg",
+  "url": "https://mypreflight-files.fra1.digitaloceanspaces.com/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
 }
 ```
 
 Errors answer `{ "error": { "code", "message", "status" } }` with a matching status: `400` bad arguments, `422` a
-prompt OpenAI refused to draw, `429` OpenAI rate limiting, `502` OpenAI unreachable, unreadable or a postcard too large
-to return, `500` anything else. A refused prompt and an outage are deliberately different statuses — retrying the first
-will never help.
+prompt OpenAI refused to draw, `429` OpenAI rate limiting, `502` OpenAI unreachable, unreadable or a bucket that
+refused the upload, `500` missing configuration or anything else. A refused prompt and an outage are deliberately
+different statuses — retrying the first will never help.
 
-### The one megabyte ceiling
+### Why the postcard is stored, not returned
 
-A DigitalOcean function may not return more than [1 MB of result][docs-limits], and base64 adds a third on top of the
-bytes it encodes. That single number decides three things about this service.
+Two platform limits decide the shape of this function, and neither is negotiable.
 
-**The image comes back encoded inside JSON, not as raw bytes.** The runtime can serve an image directly — set
-`Content-Type` and return a base64 body — but the caller here is the backend, which wants the prompt and the render
-settings alongside the artwork and stores the picture rather than displaying it. One JSON body carries both, and costs
-nothing extra against the ceiling that already applies either way.
+**A function result may not exceed [1 MB][docs-limits].** A `gpt-image-2` poster at the default 3:4 size is larger than
+that before base64 adds a third on top, so the image cannot travel in the response at all. It goes to Spaces instead,
+and the result carries only the `key` and `url` it landed under.
 
-**The default format is JPEG.** A `gpt-image-2` PNG poster at 3:4 exceeds the ceiling every time. JPEG at
-`POSTCARD_COMPRESSION` fits comfortably, and the flat-vector brief survives it. `format=png` is still accepted for
-callers who ask for a small `size`.
+**A synchronous web invocation is cut off after about 40 seconds.** The `timeout` raised to five minutes in
+`project.yml` governs how long the function may *run*, not how long the caller may wait. Past 40 seconds the platform
+answers `202` with an activation id and the function keeps going in the background — and because App Platform functions
+components run in a namespace `doctl` does not surface, that activation is not retrievable afterwards. A render at the
+default size and quality regularly takes longer than 40 seconds, so `202` is the normal answer, not the exceptional
+one.
+
+**This is why the caller chooses the uuid.** The object location is known before the render starts, so a `202` costs
+the caller nothing: it polls `<prefix><uuid>.<ext>` in the bucket until the object appears. Reading `200` is a fast
+path, not the contract.
+
+**The default format is JPEG.** A `gpt-image-2` PNG poster at 3:4 is several megabytes; JPEG at `POSTCARD_COMPRESSION`
+is a fraction of that for artwork this flat. `format=png` is still accepted, and now that the bytes never pass through
+the result there is no ceiling on it beyond the bucket.
 
 **WebP is not offered at all.** The model accepts `output_format: webp` and [answers with PNG bytes anyway][webp-bug],
 so the field would lie about what came back. `format=webp` is rejected with a `400` rather than silently honoured.
 
-If a render slips past the ceiling regardless, the function answers `502 POSTCARD_TOO_LARGE` naming the actual size,
-rather than letting the platform truncate the body into an image that will not decode.
+### Where the postcards land
+
+The upload is a plain signed `PUT` against the Spaces S3 API, so the function keeps its zero runtime dependencies —
+`src/spaces.ts` signs SigV4 with `node:crypto` rather than carrying an AWS SDK.
+
+| Variable          | Default                                             | Meaning                                        |
+| ----------------- | --------------------------------------------------- | ---------------------------------------------- |
+| `SPACES_BUCKET`   | — (required)                                        | Bucket the postcards are stored in.            |
+| `SPACES_KEY`      | — (required)                                        | Spaces access key.                             |
+| `SPACES_SECRET`   | — (required)                                        | Spaces secret key.                             |
+| `SPACES_REGION`   | `fra1`                                              | Region, used for the endpoint and the SigV4 scope. |
+| `SPACES_ENDPOINT` | `https://$SPACES_BUCKET.$SPACES_REGION.digitaloceanspaces.com` | Override, so the suite can stand a bucket in. |
+| `SPACES_PREFIX`   | `postcards/`                                        | Key prefix. Empty stores at the bucket root.   |
+| `SPACES_ACL`      | `public-read`                                       | ACL every object is stored with.               |
+
+Objects are named `<prefix><uuid>.<ext>`, where the extension follows the format: `jpeg` is stored as `.jpg`, `png` as
+`.png`. The uuid is lowercased and validated as a uuid and nothing else, so a caller cannot shape a key out of it.
+
+`SPACES_ACL` is `public-read` because the platform shows the artwork to users straight from the bucket. Set it to
+`private` if the backend should serve the bytes itself, and the `url` in the response then needs signing to be
+readable.
+
+Missing any required variable answers `500 MISCONFIGURED` naming the variable, rather than failing opaquely at the
+platform level.
 
 ### The city is part of the prompt
 
@@ -187,8 +225,10 @@ This project has configured continuous integration and continuous deployment pip
 automatically build, test and deploy the app to the DigitalOcean. You can find the configuration in `.github/workflows`
 directory.
 
-First deployment needs the component adding to the app spec, together with a shared secret and an OpenAI key — the
-fragment to merge is `.do/app.component.yaml`.
+First deployment needs the component adding to the app spec, together with four secrets: `POSTCARD_FUNCTION_SECRET`,
+`OPENAI_API_KEY`, `SPACES_KEY` and `SPACES_SECRET`. Everything else the function reads is set as a literal in
+`project.yml` — only what appears in a package `environment:` block reaches the runtime, so a variable set on the
+component and absent there has no effect.
 
 App Platform rebuilds the component whenever `main` moves, so the workflow here only tags the version and drafts the
 GitHub release. There is no image and no registry: App Platform builds from this repository using `project.yml`.

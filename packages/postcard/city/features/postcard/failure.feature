@@ -63,14 +63,25 @@ Feature: Reporting failures honestly
       }
       """
 
-  Scenario: A postcard beyond the function result limit is refused rather than truncated
-    Given OpenAI draws a postcard of 900 kilobytes
+  Scenario: A bucket that refuses the upload is reported rather than passed off as stored
+    Given OpenAI draws the postcard
+    And the bucket refuses the postcard
     When I ask for a postcard of "Munich"
     Then the response status should be 502
-    And the response error code should be "POSTCARD_TOO_LARGE"
+    And the response body should contain:
+      """
+      {
+        "error": {
+          "code": "SPACES_UNAVAILABLE",
+          "message": "The postcard was drawn but could not be stored.",
+          "status": 502
+        }
+      }
+      """
 
   Scenario: A failed draw is not cached
-    Given OpenAI is unavailable
+    Given the bucket accepts the postcard
+    And OpenAI is unavailable
     When I ask for a postcard of "Munich"
     And I ask for a postcard of "Munich"
     Then the response status should be 502

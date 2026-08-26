@@ -3,6 +3,9 @@ Feature: Refusing nonsense before it costs money
   I want malformed arguments rejected by the function
   So that no image is ever paid for on behalf of a bad request
 
+  Background:
+    Given the bucket accepts the postcard
+
   Scenario: A missing city is rejected
     Given OpenAI draws the postcard
     When I ask for a postcard without a city
@@ -18,6 +21,40 @@ Feature: Refusing nonsense before it costs money
       }
       """
     And OpenAI should have been asked to draw 0 times
+    And the bucket should have been asked to store 0 times
+
+  Scenario: A missing uuid is rejected
+    Given OpenAI draws the postcard
+    When I ask for a postcard without a uuid
+    Then the response status should be 400
+    And the response body should contain:
+      """
+      {
+        "error": {
+          "code": "BAD_REQUEST",
+          "message": "Parameter uuid is required.",
+          "status": 400
+        }
+      }
+      """
+    And OpenAI should have been asked to draw 0 times
+    And the bucket should have been asked to store 0 times
+
+  Scenario Outline: A uuid that is not a uuid is rejected
+    Given OpenAI draws the postcard
+    When I ask for a postcard of "Munich" as "<uuid>"
+    Then the response status should be 400
+    And the response error code should be "BAD_REQUEST"
+    And OpenAI should have been asked to draw 0 times
+    And the bucket should have been asked to store 0 times
+
+    Examples:
+      | uuid                                  |
+      | not-a-uuid                            |
+      | 11111111222243338444555555555555      |
+      | 11111111-2222-4333-8444-55555555555   |
+      | ../../etc/passwd                      |
+      | 11111111-2222-4333-8444-555555555555/ |
 
   Scenario: A blank city is rejected
     Given OpenAI draws the postcard

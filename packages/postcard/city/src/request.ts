@@ -3,6 +3,7 @@ import { FORMATS, type Format, type PostcardRequest, QUALITIES, type Quality } f
 
 export type RequestParams = {
   city?: string;
+  uuid?: string;
   size?: string;
   quality?: string;
   format?: string;
@@ -20,6 +21,8 @@ const MAX_CITY_LENGTH = 64;
 const MAX_CITY_WORDS = 5;
 
 const CITY_PATTERN = /^[\p{Script=Latin}\p{Mark}0-9 .'’-]+$/u;
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const SIZE_PATTERN = /^(\d{3,4})x(\d{3,4})$/;
 
@@ -55,6 +58,21 @@ export function parseCity(value: string | undefined): string {
   }
 
   return city;
+}
+
+export function parseUuid(value: string | undefined): string {
+  const uuid = (value ?? "").trim();
+
+  if (!uuid) {
+    throw new BadRequestError("Parameter uuid is required.");
+  }
+
+  // The uuid becomes the object name in the bucket, so nothing but a uuid may reach it.
+  if (!UUID_PATTERN.test(uuid)) {
+    throw new BadRequestError(`Parameter uuid must be a uuid, got "${uuid}".`);
+  }
+
+  return uuid.toLowerCase();
 }
 
 export function parseSize(value: string | undefined, fallback: string): string {
@@ -114,6 +132,7 @@ export function parseFormat(value: string | undefined, fallback: Format): Format
 export function parseRequest(params: RequestParams, defaults: Defaults): PostcardRequest {
   return {
     city: parseCity(params.city),
+    uuid: parseUuid(params.uuid),
     size: parseSize(params.size, defaults.size),
     quality: parseQuality(params.quality, defaults.quality),
     format: parseFormat(params.format, defaults.format),

@@ -8,7 +8,3 @@ export function imageResponse(base64: string = tinyJpeg): string {
 export function errorResponse(code: string, message: string, type = "invalid_request_error"): string {
   return JSON.stringify({ error: { code, message, type } });
 }
-
-export function base64OfSize(bytes: number): string {
-  return "A".repeat(Math.ceil(bytes / 3) * 4);
-}
