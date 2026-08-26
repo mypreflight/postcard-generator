@@ -1,14 +1,14 @@
 services:
-  generate:
+  city:
     build:
       context: .
       target: development
-    working_dir: /app/packages/postcard/generate
+    working_dir: /app/packages/postcard/city
     env_file:
       - .env
     volumes:
       - .:/app
-      - ./node_modules:/app/packages/postcard/generate/node_modules
+      - ./node_modules:/app/packages/postcard/city/node_modules
     ports:
       - '3001:3000'
     healthcheck:

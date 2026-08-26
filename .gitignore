@@ -4,5 +4,5 @@ node_modules/
 .env
 test-data
 
-# build output — DigitalOcean compiles the function from packages/postcard/generate/src
+# build output — DigitalOcean compiles the function from packages/postcard/city/src
 packages/**/lib/

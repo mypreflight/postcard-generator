@@ -15,16 +15,16 @@ jobs:
         uses: gi-org-pl/check-crlf-action@v1
       - name: 'Check for file permission changes'
         uses: gi-org-pl/check-file-permissions-action@v1
-      - name: 'Check generate version is unique'
+      - name: 'Check city version is unique'
         uses: gi-org-pl/check-version-action@v1
         with:
-          version: "$(jq -r '.version' packages/postcard/generate/package.json)"
+          version: "$(jq -r '.version' packages/postcard/city/package.json)"
   code:
     runs-on: 'ubuntu-latest'
     strategy:
       fail-fast: false
       matrix:
-        function: ['generate']
+        function: ['city']
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@v7

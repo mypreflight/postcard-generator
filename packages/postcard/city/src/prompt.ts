@@ -11,9 +11,8 @@ const TEMPLATE = [
     " Each person engages in an authentic, everyday local activity suited to the setting, without drawing focus as a" +
     " central hero character.",
   "TYPOGRAPHY: Set the exact city name TARGET_CITY in uppercase in the upper-left corner within generous clean" +
-    " negative space, accompanied beneath by one short, elegant tagline written in Polish that captures the city's" +
-    " unique mood and atmosphere. Keep typography restrained, clean, and editorial, ensuring it never overpowers the" +
-    " artwork. All text and lettering must be in Polish. No other text.",
+    " negative space. Keep typography restrained, clean, and editorial, ensuring it never overpowers the" +
+    " artwork. All text and lettering must be in English. No other text.",
   "ART STYLE & COLOR PALETTE: Modern Japanese stationery aesthetic, luxury vinyl sticker art, clean uniform monoline" +
     " vector outlines, flat solid color fills, and geometric simplicity without gradients, paper textures, or heavy" +
     " drop shadows. Color system is dominated by pale powder blue, soft sky blue, and mist tones, balanced with warm" +

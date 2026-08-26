@@ -20,7 +20,7 @@
     }
   ],
   "paths": {
-    "/postcard/generate": {
+    "/postcard/city": {
       "get": {
         "summary": "Draw a travel poster for a city",
         "description": "Renders the city with the poster brief and returns the encoded image together with the prompt and render settings it was drawn from. Identical requests are served from an in-memory cache for a day, for as long as the function instance stays warm.",
