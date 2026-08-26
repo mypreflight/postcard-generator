@@ -1,6 +1,6 @@
 {
-  "name": "postcard-generate",
-  "version": "1.0.0",
+  "name": "postcard-city",
+  "version": "0.1.0",
   "description": "City postcard illustration generator, deployed as a DigitalOcean Function",
   "author": "mypreflight",
   "license": "Unlicense",

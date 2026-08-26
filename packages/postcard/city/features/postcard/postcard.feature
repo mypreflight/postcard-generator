@@ -22,13 +22,13 @@ Feature: Drawing a city postcard
       }
       """
 
-  Scenario: The prompt names the city and asks for a Polish tagline
+  Scenario: The prompt names the city and asks for English lettering
     Given OpenAI draws the postcard
     When I ask for a postcard of "Kraków"
     Then the response status should be 200
     And the prompt sent to OpenAI should contain 'TARGET_CITY = "Kraków"'
-    And the prompt sent to OpenAI should contain "tagline written in Polish"
-    And the prompt sent to OpenAI should contain "All text and lettering must be in Polish."
+    And the prompt sent to OpenAI should contain "Set the exact city name TARGET_CITY in uppercase"
+    And the prompt sent to OpenAI should contain "All text and lettering must be in English."
 
   Scenario: Size, quality and format can be asked for per request
     Given OpenAI draws the postcard

@@ -19,7 +19,7 @@ flight:
 - renders a full-bleed vertical 3:4 travel poster with the [OpenAI image API][openai-images],
 - composes the whole brief — landmark, figures, palette, typography — from one city name, so a destination never needs
   a hand-made asset,
-- sets the city in uppercase with a short tagline in Polish, the platform's language,
+- sets the city in uppercase as the only lettering, in English,
 - refuses malformed arguments before a single image is paid for,
 - caches identical requests for a day, for as long as the instance stays warm.
 
@@ -93,7 +93,7 @@ once per destination.
 
 ```shell
 curl -H "X-Require-Whisk-Auth: $SECRET" \
-  "https://<app-host>/postcard/postcard/generate?city=Munich"
+  "https://<app-host>/postcard/postcard/city?city=Munich"
 ```
 
 Functions reach the network through the app's public ingress and cannot be placed on a private one — they support
@@ -101,7 +101,7 @@ neither VPCs nor App Platform internal routing. The endpoint is therefore guarde
 `webSecure` in `project.yml`. That secret is doing more than hiding an implementation detail here: every unguarded call
 would spend money at OpenAI.
 
-The function is a self-contained package under `packages/postcard/generate`, with its own `package.json`, build and
+The function is a self-contained package under `packages/postcard/city`, with its own `package.json`, build and
 dependencies. `src/function.ts` is the entry point DigitalOcean calls, and `scripts/dev-server.ts` beside it wraps that
 entry point in a throwaway HTTP server so `docker compose up` gives you something to curl; it is never deployed.
 
@@ -110,7 +110,7 @@ regularly takes tens of seconds and occasionally minutes — far past the platfo
 
 ### API documentation
 
-The contract is `openapi.json` in the repository root — `GET /postcard/generate`, requiring the
+The contract is `openapi.json` in the repository root — `GET /postcard/city`, requiring the
 `X-Require-Whisk-Auth` header. It is the source of truth: `flight-tracker-api` generates its client types from it
 rather than restating them.
 
@@ -177,7 +177,7 @@ reaches OpenAI, so a bad argument costs nothing.
 This project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ```shell
-npm version 1.2.0 --no-git-tag-version --prefix packages/postcard/generate
+npm version 1.2.0 --no-git-tag-version --prefix packages/postcard/city
 ```
 
 `integrity` fails the build if the manifest and the lock file disagree, and the version it agrees on is the one the
@@ -193,14 +193,14 @@ fragment to merge is `.do/app.component.yaml`.
 App Platform rebuilds the component whenever `main` moves, so the workflow here only tags the version and drafts the
 GitHub release. There is no image and no registry: App Platform builds from this repository using `project.yml`.
 
-Everything runs in Docker, in the `generate` service:
+Everything runs in Docker, in the `city` service:
 
 ```shell
-docker compose exec generate npm test
-docker compose exec generate npm run test:functional
-docker compose exec generate npm run typecheck
-docker compose exec generate npm run lint
-docker compose exec generate npm run build
+docker compose exec city npm test
+docker compose exec city npm run test:functional
+docker compose exec city npm run typecheck
+docker compose exec city npm run lint
+docker compose exec city npm run build
 ```
 
 The functional suite drives the real entry point against a mockserver standing in for OpenAI, so the retry, cache,

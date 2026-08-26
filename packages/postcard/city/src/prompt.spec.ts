@@ -13,12 +13,18 @@ describe("buildPrompt", () => {
     expect(buildPrompt("Munich")).toContain("Full-bleed vertical 3:4 minimalist flat-vector travel art poster");
   });
 
-  it("asks for every piece of lettering in Polish", () => {
+  it("asks for every piece of lettering in English", () => {
     const prompt = buildPrompt("Munich");
 
-    expect(prompt).toContain("tagline written in Polish");
-    expect(prompt).toContain("All text and lettering must be in Polish.");
+    expect(prompt).toContain("All text and lettering must be in English.");
     expect(prompt).toContain("No other text.");
+  });
+
+  it("asks for the city name as the only lettering", () => {
+    const prompt = buildPrompt("Munich");
+
+    expect(prompt).toContain("Set the exact city name TARGET_CITY in uppercase");
+    expect(prompt).not.toContain("tagline");
   });
 
   it("carries every section of the brief", () => {
