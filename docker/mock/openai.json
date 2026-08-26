@@ -17,7 +17,7 @@
   {
     "httpRequest": {
       "method": "PUT",
-      "path": "/mypreflight-files/.*"
+      "path": "/mypreflight-postcards/.*"
     },
     "httpResponse": {
       "statusCode": 200,

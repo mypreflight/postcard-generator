@@ -143,7 +143,7 @@ attribute the render later:
   "bytes": 312044,
   "prompt": "TARGET_CITY = \"Munich\" Full-bleed vertical 3:4 minimalist flat-vector travel art poster …",
   "key": "postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg",
-  "url": "https://mypreflight-files.fra1.digitaloceanspaces.com/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+  "url": "https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
 }
 ```
 

@@ -3,7 +3,7 @@ const MOCKSERVER_URL = process.env.OPENAI_API_HOST ?? "http://openai-mock:1080";
 export const GENERATIONS_PATH = "/v1/images/generations";
 
 /** Every upload the suite records, whatever uuid and prefix it landed under. */
-export const BUCKET_PATH = "/mypreflight-files/.*";
+export const BUCKET_PATH = "/mypreflight-postcards/.*";
 
 type Expectation = {
   method?: string;
