@@ -8,7 +8,7 @@ packages:
       OPENAI_API_KEY: '${OPENAI_API_KEY}'
       SPACES_KEY: '${SPACES_KEY}'
       SPACES_SECRET: '${SPACES_SECRET}'
-      SPACES_BUCKET: 'mypreflight-files'
+      SPACES_BUCKET: 'mypreflight-postcards'
       SPACES_REGION: 'fra1'
       SPACES_PREFIX: 'postcards/'
       SPACES_ACL: 'public-read'

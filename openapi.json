@@ -245,7 +245,7 @@
             "type": "string",
             "format": "uri",
             "description": "Where the stored postcard can be read, if the configured acl allows it.",
-            "example": "https://mypreflight-files.fra1.digitaloceanspaces.com/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+            "example": "https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
           }
         }
       },

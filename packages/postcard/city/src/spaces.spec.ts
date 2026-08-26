@@ -3,7 +3,7 @@ import { SpacesUnavailableError } from "./errors";
 import { SpacesClient } from "./spaces";
 
 const options = {
-  endpoint: "https://mypreflight-files.fra1.digitaloceanspaces.com",
+  endpoint: "https://mypreflight-postcards.fra1.digitaloceanspaces.com",
   region: "fra1",
   accessKey: "DO801RPFVQPH7EU4YZ4P",
   secretKey: "a-secret",
@@ -44,9 +44,9 @@ describe("SpacesClient", () => {
 
     expect(stored).toEqual({
       key: `postcards/${uuid}.jpg`,
-      url: `https://mypreflight-files.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`,
+      url: `https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`,
     });
-    expect(lastCall().url).toBe(`https://mypreflight-files.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`);
+    expect(lastCall().url).toBe(`https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`);
     expect(lastCall().init.method).toBe("PUT");
   });
 
@@ -108,13 +108,13 @@ describe("SpacesClient", () => {
   });
 
   it("keeps the bucket in the signed path when the endpoint carries one", async () => {
-    await new SpacesClient({ ...options, endpoint: "http://openai-mock:1080/mypreflight-files" }).store(
+    await new SpacesClient({ ...options, endpoint: "http://openai-mock:1080/mypreflight-postcards" }).store(
       `${uuid}.jpg`,
       image,
       "image/jpeg",
     );
 
-    expect(lastCall().url).toBe(`http://openai-mock:1080/mypreflight-files/postcards/${uuid}.jpg`);
+    expect(lastCall().url).toBe(`http://openai-mock:1080/mypreflight-postcards/postcards/${uuid}.jpg`);
     expect(headers().host).toBe("openai-mock:1080");
   });
 

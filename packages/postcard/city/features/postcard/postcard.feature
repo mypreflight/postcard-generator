@@ -38,7 +38,7 @@ Feature: Drawing a city postcard
     Given OpenAI draws the postcard
     When I ask for a postcard of "Munich" as "11111111-2222-4333-8444-555555555555"
     Then the response status should be 200
-    And the postcard should have been stored at "/mypreflight-files/postcards/11111111-2222-4333-8444-555555555555.jpg"
+    And the postcard should have been stored at "/mypreflight-postcards/postcards/11111111-2222-4333-8444-555555555555.jpg"
 
   Scenario: A png postcard is stored under a png name
     Given OpenAI draws the postcard
@@ -47,7 +47,7 @@ Feature: Drawing a city postcard
       | uuid   | 11111111-2222-4333-8444-555555555555 |
       | format | png                                  |
     Then the response status should be 200
-    And the postcard should have been stored at "/mypreflight-files/postcards/11111111-2222-4333-8444-555555555555.png"
+    And the postcard should have been stored at "/mypreflight-postcards/postcards/11111111-2222-4333-8444-555555555555.png"
     And the response property "key" should be "postcards/11111111-2222-4333-8444-555555555555.png"
 
   Scenario: A uuid is stored in lower case, so one postcard never lands under two names
@@ -55,7 +55,7 @@ Feature: Drawing a city postcard
     When I ask for a postcard of "Munich" as "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE"
     Then the response status should be 200
     And the response property "uuid" should be "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
-    And the postcard should have been stored at "/mypreflight-files/postcards/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jpg"
+    And the postcard should have been stored at "/mypreflight-postcards/postcards/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee.jpg"
 
   Scenario: The upload is signed the way Spaces expects
     Given OpenAI draws the postcard
@@ -118,7 +118,7 @@ Feature: Drawing a city postcard
     Then the response status should be 200
     And OpenAI should have been asked to draw 1 time
     And the bucket should have been asked to store 2 times
-    And the postcard should have been stored at "/mypreflight-files/postcards/99999999-8888-4777-8666-555555555555.jpg"
+    And the postcard should have been stored at "/mypreflight-postcards/postcards/99999999-8888-4777-8666-555555555555.jpg"
 
   Scenario: A city name is matched case-insensitively by the cache
     Given OpenAI draws the postcard

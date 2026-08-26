@@ -22,7 +22,7 @@ function fakeSpaces(overrides: Partial<SpacesClient> = {}): SpacesClient {
   return {
     store: jest.fn().mockImplementation((name: string) => ({
       key: `postcards/${name}`,
-      url: `https://mypreflight-files.fra1.digitaloceanspaces.com/postcards/${name}`,
+      url: `https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${name}`,
     })),
     ...overrides,
   } as unknown as SpacesClient;
@@ -43,7 +43,7 @@ describe("handleRequest", () => {
       contentType: "image/jpeg",
       bytes: 3,
       key: `postcards/${uuid}.jpg`,
-      url: `https://mypreflight-files.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`,
+      url: `https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`,
     });
   });
 

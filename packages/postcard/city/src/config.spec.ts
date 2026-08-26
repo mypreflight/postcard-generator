@@ -61,7 +61,7 @@ describe("readSpacesOptions", () => {
       delete process.env[key];
     }
 
-    process.env.SPACES_BUCKET = "mypreflight-files";
+    process.env.SPACES_BUCKET = "mypreflight-postcards";
     process.env.SPACES_KEY = "key";
     process.env.SPACES_SECRET = "secret";
   });
@@ -72,7 +72,7 @@ describe("readSpacesOptions", () => {
 
   it("derives the bucket endpoint from the bucket and the region", () => {
     expect(readSpacesOptions()).toEqual({
-      endpoint: "https://mypreflight-files.fra1.digitaloceanspaces.com",
+      endpoint: "https://mypreflight-postcards.fra1.digitaloceanspaces.com",
       region: "fra1",
       accessKey: "key",
       secretKey: "secret",
@@ -85,15 +85,15 @@ describe("readSpacesOptions", () => {
     process.env.SPACES_REGION = "ams3";
 
     expect(readSpacesOptions()).toMatchObject({
-      endpoint: "https://mypreflight-files.ams3.digitaloceanspaces.com",
+      endpoint: "https://mypreflight-postcards.ams3.digitaloceanspaces.com",
       region: "ams3",
     });
   });
 
   it("lets an endpoint be pointed elsewhere, so the suite can stand a bucket in", () => {
-    process.env.SPACES_ENDPOINT = "http://openai-mock:1080/mypreflight-files";
+    process.env.SPACES_ENDPOINT = "http://openai-mock:1080/mypreflight-postcards";
 
-    expect(readSpacesOptions()).toMatchObject({ endpoint: "http://openai-mock:1080/mypreflight-files" });
+    expect(readSpacesOptions()).toMatchObject({ endpoint: "http://openai-mock:1080/mypreflight-postcards" });
   });
 
   it.each([
