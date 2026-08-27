@@ -161,15 +161,27 @@ that before base64 adds a third on top, so the image cannot travel in the respon
 and the result carries only the `key` and `url` it landed under.
 
 **A synchronous web invocation is cut off after about 40 seconds.** The `timeout` raised to five minutes in
-`project.yml` governs how long the function may *run*, not how long the caller may wait. Past 40 seconds the platform
-answers `202` with an activation id and the function keeps going in the background — and because App Platform functions
-components run in a namespace `doctl` does not surface, that activation is not retrievable afterwards. A render at the
-default size and quality regularly takes longer than 40 seconds, so `202` is the normal answer, not the exceptional
-one.
+`project.yml` governs how long the function may *run*, not how long the caller may wait. A render at the default size
+and quality regularly takes longer than 40 seconds, so waiting for one was never going to work.
+
+**So the function does not make the caller wait.** It validates the arguments, hands the render to a second,
+non-blocking activation of itself and answers `202` at once with the `key` and `url` the art will appear under. Only a
+malformed request is answered synchronously, as a `400`, because that is the one failure the caller can act on.
+
+The hand-off uses the `__OW_API_HOST`, `__OW_API_KEY`, `__OW_NAMESPACE` and `__OW_ACTION_NAME` the platform injects
+into every action, so it needs no credentials of its own — `src/scheduler.ts` is a single authenticated `POST` to
+`actions/<package>/<action>?blocking=false`. The background activation is the same code, told it is the background
+activation by a `background: true` argument the web caller never sets. Nothing is retained about it: App Platform
+functions components run in a namespace `doctl` does not surface, so that activation is not retrievable afterwards.
+
+**Renders are never lost to a failed hand-off.** Off the platform — the dev server, the test suite — those variables
+are absent, and if the platform refuses the invocation the error is logged. Either way the function falls back to
+drawing while the caller waits, which is the old behaviour: the platform cuts the caller off at 40 seconds and the
+render finishes anyway.
 
 **This is why the caller chooses the uuid.** The object location is known before the render starts, so a `202` costs
-the caller nothing: it polls `<prefix><uuid>.<ext>` in the bucket until the object appears. Reading `200` is a fast
-path, not the contract.
+the caller nothing: it polls `<prefix><uuid>.<ext>` in the bucket until the object appears. A render that fails after
+the hand-off is only visible as art that never appears, so a caller that polls needs a deadline of its own.
 
 **The default format is JPEG.** A `gpt-image-2` PNG poster at 3:4 is several megabytes; JPEG at `POSTCARD_COMPRESSION`
 is a fraction of that for artwork this flat. `format=png` is still accepted, and now that the bytes never pass through
@@ -190,11 +202,17 @@ The upload is a plain signed `PUT` against the Spaces S3 API, so the function ke
 | `SPACES_SECRET`   | — (required)                                        | Spaces secret key.                             |
 | `SPACES_REGION`   | `fra1`                                              | Region, used for the endpoint and the SigV4 scope. |
 | `SPACES_ENDPOINT` | `https://$SPACES_BUCKET.$SPACES_REGION.digitaloceanspaces.com` | Override, so the suite can stand a bucket in. |
+| `SPACES_PUBLIC_BASE_URL` | `$SPACES_ENDPOINT`                           | Base url reported to readers. A CNAME in production. |
 | `SPACES_PREFIX`   | `postcards/`                                        | Key prefix. Empty stores at the bucket root.   |
 | `SPACES_ACL`      | `public-read`                                       | ACL every object is stored with.               |
 
 Objects are named `<prefix><uuid>.<ext>`, where the extension follows the format: `jpeg` is stored as `.jpg`, `png` as
 `.png`. The uuid is lowercased and validated as a uuid and nothing else, so a caller cannot shape a key out of it.
+
+The upload is signed against `SPACES_ENDPOINT` while the `url` in the answer is built from
+`SPACES_PUBLIC_BASE_URL`, which is `https://postcards.mypreflight.io` in production. SigV4 signs the host, so the
+bucket endpoint is the one that has to be signed; the CNAME only ever serves reads. Left unset, the two are the same
+and readers are pointed at the bucket directly.
 
 `SPACES_ACL` is `public-read` because the platform shows the artwork to users straight from the bucket. Set it to
 `private` if the backend should serve the bytes itself, and the `url` in the response then needs signing to be

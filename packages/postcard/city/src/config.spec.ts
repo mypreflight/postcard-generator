@@ -1,4 +1,4 @@
-import { readDefaults, readSpacesOptions } from "./config";
+import { readDefaults, readSchedulerOptions, readSpacesOptions } from "./config";
 
 const KEYS = [
   "POSTCARD_SIZE",
@@ -8,6 +8,7 @@ const KEYS = [
   "SPACES_BUCKET",
   "SPACES_REGION",
   "SPACES_ENDPOINT",
+  "SPACES_PUBLIC_BASE_URL",
   "SPACES_KEY",
   "SPACES_SECRET",
   "SPACES_PREFIX",
@@ -73,11 +74,21 @@ describe("readSpacesOptions", () => {
   it("derives the bucket endpoint from the bucket and the region", () => {
     expect(readSpacesOptions()).toEqual({
       endpoint: "https://mypreflight-postcards.fra1.digitaloceanspaces.com",
+      publicBaseUrl: "https://mypreflight-postcards.fra1.digitaloceanspaces.com",
       region: "fra1",
       accessKey: "key",
       secretKey: "secret",
       prefix: "postcards/",
       acl: "public-read",
+    });
+  });
+
+  it("points readers at the public base url while still signing against the bucket", () => {
+    process.env.SPACES_PUBLIC_BASE_URL = "https://postcards.mypreflight.io";
+
+    expect(readSpacesOptions()).toMatchObject({
+      endpoint: "https://mypreflight-postcards.fra1.digitaloceanspaces.com",
+      publicBaseUrl: "https://postcards.mypreflight.io",
     });
   });
 
@@ -112,5 +123,57 @@ describe("readSpacesOptions", () => {
     delete process.env[key];
 
     expect(() => readSpacesOptions()).toThrow(new RegExp(key));
+  });
+});
+
+describe("readSchedulerOptions", () => {
+  const original = { ...process.env };
+
+  const platform = ["__OW_API_HOST", "__OW_API_KEY", "__OW_NAMESPACE", "__OW_ACTION_NAME"];
+
+  beforeEach(() => {
+    for (const key of platform) {
+      delete process.env[key];
+    }
+  });
+
+  afterAll(() => {
+    process.env = original;
+  });
+
+  function onPlatform(): void {
+    process.env.__OW_API_HOST = "https://faas-fra1-a1b2c3d4.doserverless.co/";
+    process.env.__OW_API_KEY = "id:secret";
+    process.env.__OW_NAMESPACE = "fn-0123";
+    process.env.__OW_ACTION_NAME = "/fn-0123/postcard/city";
+  }
+
+  it("answers nothing off the platform, so a render is not handed to an activation that cannot exist", () => {
+    expect(readSchedulerOptions()).toBeNull();
+  });
+
+  it("reads the credentials the platform injects", () => {
+    onPlatform();
+
+    expect(readSchedulerOptions()).toEqual({
+      apiHost: "https://faas-fra1-a1b2c3d4.doserverless.co",
+      apiKey: "id:secret",
+      namespace: "fn-0123",
+      actionName: "postcard/city",
+    });
+  });
+
+  it("leaves an action name that carries no namespace alone", () => {
+    onPlatform();
+    process.env.__OW_ACTION_NAME = "postcard/city";
+
+    expect(readSchedulerOptions()).toMatchObject({ actionName: "postcard/city" });
+  });
+
+  it.each(platform)("answers nothing when %s is missing", (missing) => {
+    onPlatform();
+    delete process.env[missing];
+
+    expect(readSchedulerOptions()).toBeNull();
   });
 });

@@ -11,6 +11,7 @@ packages:
       SPACES_BUCKET: 'mypreflight-postcards'
       SPACES_REGION: 'fra1'
       SPACES_PREFIX: 'postcards/'
+      SPACES_PUBLIC_BASE_URL: 'https://postcards.mypreflight.io'
       SPACES_ACL: 'public-read'
     functions:
       - name: city

@@ -2,6 +2,7 @@ import type { OpenAiClient } from "./client";
 import { OpenAiUnavailableError, PostcardRejectedError, SpacesUnavailableError } from "./errors";
 import { handleRequest } from "./handler";
 import type { Defaults } from "./request";
+import type { Scheduler } from "./scheduler";
 import type { SpacesClient } from "./spaces";
 
 const defaults: Defaults = { size: "1152x1536", quality: "high", format: "jpeg", compression: 80 };
@@ -19,13 +20,20 @@ function fakeClient(overrides: Partial<OpenAiClient> = {}): OpenAiClient {
 }
 
 function fakeSpaces(overrides: Partial<SpacesClient> = {}): SpacesClient {
+  const locate = (name: string) => ({
+    key: `postcards/${name}`,
+    url: `https://postcards.mypreflight.io/postcards/${name}`,
+  });
+
   return {
-    store: jest.fn().mockImplementation((name: string) => ({
-      key: `postcards/${name}`,
-      url: `https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${name}`,
-    })),
+    locate: jest.fn().mockImplementation(locate),
+    store: jest.fn().mockImplementation(locate),
     ...overrides,
   } as unknown as SpacesClient;
+}
+
+function fakeScheduler(overrides: Partial<Scheduler> = {}): Scheduler {
+  return { schedule: jest.fn().mockResolvedValue(undefined), ...overrides } as unknown as Scheduler;
 }
 
 describe("handleRequest", () => {
@@ -50,7 +58,7 @@ describe("handleRequest", () => {
       contentType: "image/jpeg",
       bytes: 3,
       key: `postcards/${uuid}.jpg`,
-      url: `https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`,
+      url: `https://postcards.mypreflight.io/postcards/${uuid}.jpg`,
     });
   });
 
@@ -264,5 +272,80 @@ describe("handleRequest", () => {
     expect(response.body).toEqual({
       error: { code: "INTERNAL_ERROR", message: "Postcard generation failed.", status: 500 },
     });
+  });
+});
+
+describe("handleRequest, handing the render to a background activation", () => {
+  const munich = { city: "Munich", country: "Germany", continent: "Europe", uuid };
+
+  it("answers at once with where the art will land, without drawing it", async () => {
+    const client = fakeClient();
+    const scheduler = fakeScheduler();
+
+    const response = await handleRequest(client, fakeSpaces(), munich, defaults, scheduler);
+
+    expect(response.statusCode).toBe(202);
+    expect(response.body).toEqual({
+      status: "accepted",
+      city: "Munich",
+      country: "Germany",
+      continent: "Europe",
+      uuid,
+      size: "1152x1536",
+      quality: "high",
+      format: "jpeg",
+      key: `postcards/${uuid}.jpg`,
+      url: `https://postcards.mypreflight.io/postcards/${uuid}.jpg`,
+    });
+    expect(client.draw).not.toHaveBeenCalled();
+  });
+
+  it("hands the activation the request as it was parsed, not as it arrived", async () => {
+    const scheduler = fakeScheduler();
+
+    await handleRequest(fakeClient(), fakeSpaces(), { ...munich, uuid: uuid.toUpperCase() }, defaults, scheduler);
+
+    expect(scheduler.schedule).toHaveBeenCalledWith({
+      city: "Munich",
+      country: "Germany",
+      continent: "Europe",
+      uuid,
+      size: "1152x1536",
+      quality: "high",
+      format: "jpeg",
+      background: true,
+    });
+  });
+
+  it("draws rather than scheduling again once it is the background activation", async () => {
+    const client = fakeClient();
+    const scheduler = fakeScheduler();
+
+    const response = await handleRequest(client, fakeSpaces(), { ...munich, background: true }, defaults, scheduler);
+
+    expect(response.statusCode).toBe(200);
+    expect(client.draw).toHaveBeenCalledTimes(1);
+    expect(scheduler.schedule).not.toHaveBeenCalled();
+  });
+
+  it("refuses a request the caller got wrong without scheduling anything", async () => {
+    const scheduler = fakeScheduler();
+
+    const response = await handleRequest(fakeClient(), fakeSpaces(), { ...munich, city: "" }, defaults, scheduler);
+
+    expect(response.statusCode).toBe(400);
+    expect(scheduler.schedule).not.toHaveBeenCalled();
+  });
+
+  it("draws while the caller waits rather than losing a render the platform would not take", async () => {
+    const client = fakeClient();
+    const scheduler = fakeScheduler({
+      schedule: jest.fn().mockRejectedValue(new Error("no activation for you")),
+    } as unknown as Partial<Scheduler>);
+
+    const response = await handleRequest(client, fakeSpaces(), munich, defaults, scheduler);
+
+    expect(response.statusCode).toBe(200);
+    expect(client.draw).toHaveBeenCalledTimes(1);
   });
 });
