@@ -39,6 +39,19 @@ export type StoredObject = {
   url: string;
 };
 
+export type AcceptedPostcard = {
+  status: "accepted";
+  city: string;
+  country: string;
+  continent: Continent;
+  uuid: string;
+  size: string;
+  quality: Quality;
+  format: Format;
+  key: string;
+  url: string;
+};
+
 export type Postcard = {
   city: string;
   country: string;

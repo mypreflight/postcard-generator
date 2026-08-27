@@ -4,6 +4,7 @@ import { SpacesClient } from "./spaces";
 
 const options = {
   endpoint: "https://mypreflight-postcards.fra1.digitaloceanspaces.com",
+  publicBaseUrl: "https://mypreflight-postcards.fra1.digitaloceanspaces.com",
   region: "fra1",
   accessKey: "DO801RPFVQPH7EU4YZ4P",
   secretKey: "a-secret",
@@ -48,6 +49,25 @@ describe("SpacesClient", () => {
     });
     expect(lastCall().url).toBe(`https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`);
     expect(lastCall().init.method).toBe("PUT");
+  });
+
+  it("answers with the public base url while the upload still goes to the bucket", async () => {
+    const client = new SpacesClient({ ...options, publicBaseUrl: "https://postcards.mypreflight.io" });
+
+    const stored = await client.store(`${uuid}.jpg`, image, "image/jpeg");
+
+    expect(stored.url).toBe(`https://postcards.mypreflight.io/postcards/${uuid}.jpg`);
+    expect(lastCall().url).toBe(`https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/${uuid}.jpg`);
+    expect(headers().host).toBe("mypreflight-postcards.fra1.digitaloceanspaces.com");
+  });
+
+  it("knows where an object will land before it is stored", () => {
+    const client = new SpacesClient({ ...options, publicBaseUrl: "https://postcards.mypreflight.io" });
+
+    expect(client.locate(`${uuid}.jpg`)).toEqual({
+      key: `postcards/${uuid}.jpg`,
+      url: `https://postcards.mypreflight.io/postcards/${uuid}.jpg`,
+    });
   });
 
   it("puts the object at the root when no prefix is configured", async () => {

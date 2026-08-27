@@ -19,6 +19,7 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export type SpacesClientOptions = {
   endpoint: string;
+  publicBaseUrl: string;
   region: string;
   accessKey: string;
   secretKey: string;
@@ -29,6 +30,7 @@ export type SpacesClientOptions = {
 export class SpacesClient {
   private readonly logger = new Logger(SpacesClient.name);
   private readonly endpoint: string;
+  private readonly publicBaseUrl: string;
   private readonly region: string;
   private readonly accessKey: string;
   private readonly secretKey: string;
@@ -37,6 +39,7 @@ export class SpacesClient {
 
   constructor(options: SpacesClientOptions) {
     this.endpoint = options.endpoint.replace(/\/+$/, "");
+    this.publicBaseUrl = options.publicBaseUrl.replace(/\/+$/, "");
     this.region = options.region;
     this.accessKey = options.accessKey;
     this.secretKey = options.secretKey;
@@ -44,12 +47,22 @@ export class SpacesClient {
     this.acl = options.acl;
   }
 
-  async store(name: string, body: Buffer, contentType: string): Promise<StoredObject> {
+  /**
+   * Where an object will land, known before it is drawn because the caller names it. The upload is signed
+   * against the bucket endpoint, while readers are pointed at the public base url, which may be a CNAME.
+   */
+  locate(name: string): StoredObject {
     const key = `${this.prefix}${name}`;
-    const url = `${this.endpoint}/${encodeKey(key)}`;
+
+    return { key, url: `${this.publicBaseUrl}/${encodeKey(key)}` };
+  }
+
+  async store(name: string, body: Buffer, contentType: string): Promise<StoredObject> {
+    const { key, url } = this.locate(name);
+    const uploadUrl = `${this.endpoint}/${encodeKey(key)}`;
     const startedAt = Date.now();
 
-    const response = await this.putWithRetry(url, body, contentType);
+    const response = await this.putWithRetry(uploadUrl, body, contentType);
 
     if (!response.ok) {
       this.logger.error(`Spaces answered ${response.status} for ${key}: ${await this.readBody(response)}`);

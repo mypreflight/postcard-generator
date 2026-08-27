@@ -1,9 +1,10 @@
 import { OpenAiClient } from "./client";
-import { readDefaults, readSpacesOptions } from "./config";
+import { readDefaults, readSchedulerOptions, readSpacesOptions } from "./config";
 import { ProviderError } from "./errors";
 import { type HandlerParams, handleRequest } from "./handler";
 import { describeError, Logger, stackOf } from "./logger";
 import type { Defaults } from "./request";
+import { Scheduler } from "./scheduler";
 import { SpacesClient } from "./spaces";
 
 const DEFAULT_BASE_URL = "https://api.openai.com";
@@ -15,6 +16,7 @@ const logger = new Logger("PostcardFunction");
 let client: OpenAiClient | undefined;
 let spaces: SpacesClient | undefined;
 let defaults: Defaults | undefined;
+let scheduler: Scheduler | null | undefined;
 
 function resolveClient(): OpenAiClient {
   if (!client) {
@@ -53,10 +55,27 @@ function resolveDefaults(): Defaults {
   return defaults;
 }
 
+function resolveScheduler(): Scheduler | null {
+  if (scheduler === undefined) {
+    const options = readSchedulerOptions();
+
+    scheduler = options ? new Scheduler(options) : null;
+
+    logger.log(
+      options
+        ? `Renders are handed to background activations of ${options.actionName}.`
+        : "No platform credentials on board, so renders happen while the caller waits.",
+    );
+  }
+
+  return scheduler;
+}
+
 export function resetClient(): void {
   client = undefined;
   spaces = undefined;
   defaults = undefined;
+  scheduler = undefined;
 }
 
 export async function main(args: HandlerParams): Promise<{
@@ -68,10 +87,20 @@ export async function main(args: HandlerParams): Promise<{
 
   // Resolving configuration can fail, and a throw here would escape the function
   // as an opaque platform error rather than as an answer the caller can read.
-  let resolved: { client: OpenAiClient; spaces: SpacesClient; defaults: Defaults };
+  let resolved: {
+    client: OpenAiClient;
+    spaces: SpacesClient;
+    defaults: Defaults;
+    scheduler: Scheduler | null;
+  };
 
   try {
-    resolved = { client: resolveClient(), spaces: resolveSpaces(), defaults: resolveDefaults() };
+    resolved = {
+      client: resolveClient(),
+      spaces: resolveSpaces(),
+      defaults: resolveDefaults(),
+      scheduler: resolveScheduler(),
+    };
   } catch (error) {
     const status = error instanceof ProviderError ? error.status : 500;
     const code = error instanceof ProviderError ? error.code : "MISCONFIGURED";
@@ -85,7 +114,13 @@ export async function main(args: HandlerParams): Promise<{
     };
   }
 
-  const { statusCode, body } = await handleRequest(resolved.client, resolved.spaces, args ?? {}, resolved.defaults);
+  const { statusCode, body } = await handleRequest(
+    resolved.client,
+    resolved.spaces,
+    args ?? {},
+    resolved.defaults,
+    resolved.scheduler,
+  );
 
   return { statusCode, headers, body };
 }

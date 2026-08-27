@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyPreflight postcard generator",
-    "description": "A DigitalOcean Function that draws a minimalist flat-vector travel poster for a city with the OpenAI image API and stores it in DigitalOcean Spaces under a uuid the caller chooses.\n\nDeployed as a functions component of the `mypreflight` App Platform app. Every request must carry the `X-Require-Whisk-Auth` header declared as `webSecure` in project.yml; the platform rejects the request before the function runs otherwise.\n\nThe function answers with where the postcard was stored, never with the image itself: a function result may not exceed 1 MB, and the platform stops waiting for a synchronous web invocation after about 40 seconds. A render at the default size and quality regularly takes longer than that, so the caller should expect 202 and poll the bucket for `<uuid>.<ext>` rather than rely on reading 200. Because the caller chooses the uuid, the object location is known before the render finishes.",
+    "description": "A DigitalOcean Function that draws a minimalist flat-vector travel poster for a city with the OpenAI image API and stores it in DigitalOcean Spaces under a uuid the caller chooses.\n\nDeployed as a functions component of the `mypreflight` App Platform app. Every request must carry the `X-Require-Whisk-Auth` header declared as `webSecure` in project.yml; the platform rejects the request before the function runs otherwise.\n\n**The function answers `202` and draws in the background.** A render takes tens of seconds and sometimes minutes, far longer than the platform will hold a synchronous web invocation open, so the request is validated, handed to a second activation and acknowledged at once. The answer carries the `key` and `url` the art will appear at \u2014 the caller chose the uuid, so the location is known before the render starts \u2014 and the caller polls the bucket for it. Nothing but a `400` tells the caller anything is wrong with the request itself; a render that fails later is only visible as art that never appears.\n\n`200` with a full result is the exception, not the rule: it is answered when the function could not hand the render off and drew it while the caller waited. The image never travels in either answer, because a function result may not exceed 1 MB.",
     "version": "1.0.0",
     "license": {
       "name": "Unlicense",
@@ -121,7 +121,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The postcard was drawn and stored.",
+            "description": "The render could not be handed to a background activation, so it was drawn while the caller waited and is stored.",
             "content": {
               "application/json": {
                 "schema": {
@@ -131,7 +131,14 @@
             }
           },
           "202": {
-            "description": "The platform stopped waiting for the render and the function is still running. Returned by App Platform, not by the function: the body carries an activation id, not a postcard. The render continues and the object appears in the bucket under the uuid that was asked for, so poll for it rather than treating this as a failure."
+            "description": "The request was validated and the render is running in the background. The normal answer. The body carries where the art will appear; poll that url until it answers. A `202` whose body carries an `activationId` and no `key` comes from the platform rather than the function, and means the render is running but was not acknowledged \u2014 the art still appears under the uuid that was asked for.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedPostcard"
+                }
+              }
+            }
           },
           "400": {
             "description": "The arguments are malformed. No image was drawn.",
@@ -197,6 +204,81 @@
       }
     },
     "schemas": {
+      "AcceptedPostcard": {
+        "type": "object",
+        "description": "The request was validated and handed to a background activation. The art is not stored yet.",
+        "required": [
+          "status",
+          "city",
+          "uuid",
+          "size",
+          "quality",
+          "format",
+          "key",
+          "url"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "accepted"
+            ],
+            "description": "Always `accepted`, so this answer is never mistaken for a stored postcard."
+          },
+          "city": {
+            "type": "string",
+            "description": "The city as it was asked for, trimmed.",
+            "example": "Munich"
+          },
+          "country": {
+            "type": "string",
+            "description": "The country the city was placed in.",
+            "example": "Germany"
+          },
+          "continent": {
+            "type": "string",
+            "description": "The continent the city was placed on.",
+            "example": "Europe"
+          },
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The uuid the object will be named after, lowercased.",
+            "example": "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b"
+          },
+          "size": {
+            "type": "string",
+            "example": "1152x1536"
+          },
+          "quality": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "jpeg",
+              "png"
+            ]
+          },
+          "key": {
+            "type": "string",
+            "description": "Object key the art will appear under, prefix included.",
+            "example": "postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Where the art will be readable once it is stored. Poll this until it answers.",
+            "example": "https://postcards.mypreflight.io/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+          }
+        }
+      },
       "Postcard": {
         "type": "object",
         "required": [
@@ -285,7 +367,7 @@
             "type": "string",
             "format": "uri",
             "description": "Where the stored postcard can be read, if the configured acl allows it.",
-            "example": "https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+            "example": "https://postcards.mypreflight.io/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
           }
         }
       },
