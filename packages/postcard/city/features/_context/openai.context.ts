@@ -43,6 +43,13 @@ Then("the prompt sent to OpenAI should contain {string}", async (needle: string)
   expect(payload.prompt as string).toContain(needle);
 });
 
+Then("the prompt sent to OpenAI should not contain {string}", async (needle: string) => {
+  const payload = await lastPayload();
+
+  expect(typeof payload.prompt).toBe("string");
+  expect(payload.prompt as string).not.toContain(needle);
+});
+
 Then("OpenAI should have been asked for {string} {string}", async (field: string, value: string) => {
   const payload = await lastPayload();
 

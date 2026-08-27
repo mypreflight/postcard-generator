@@ -17,10 +17,10 @@ createServer((request, response) => {
 
   main({
     city: url.searchParams.get("city") ?? undefined,
+    country: url.searchParams.get("country") ?? undefined,
+    continent: url.searchParams.get("continent") ?? undefined,
     uuid: url.searchParams.get("uuid") ?? undefined,
-    size: url.searchParams.get("size") ?? undefined,
-    quality: url.searchParams.get("quality") ?? undefined,
-    format: url.searchParams.get("format") ?? undefined,
+    background: url.searchParams.get("background") ?? undefined,
   })
     .then((result) => {
       const payload = JSON.stringify(result.body);

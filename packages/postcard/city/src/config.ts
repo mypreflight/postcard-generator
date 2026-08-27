@@ -1,7 +1,7 @@
 import { MisconfiguredError } from "./errors";
 import type { Defaults } from "./request";
 import { parseFormat, parseQuality, parseSize } from "./request";
-import type { SchedulerOptions } from "./scheduler";
+import type { PlatformCredentials, SchedulerOptions, WebEndpoint } from "./scheduler";
 import type { SpacesClientOptions } from "./spaces";
 
 const FALLBACK_SIZE = "1152x1536";
@@ -92,11 +92,7 @@ function readActionName(namespace: string): string {
   return actionName.replace(/^\/+/, "");
 }
 
-/**
- * The credentials the platform injects for an action to invoke another. Absent off-platform — the dev
- * server has no activations to schedule — which is why this answers null rather than throwing.
- */
-export function readSchedulerOptions(): SchedulerOptions | null {
+function readPlatformCredentials(): PlatformCredentials | null {
   const apiHost = (process.env.__OW_API_HOST ?? "").trim().replace(/\/+$/, "");
   const apiKey = (process.env.__OW_API_KEY ?? "").trim();
   const namespace = (process.env.__OW_NAMESPACE ?? "").trim();
@@ -107,4 +103,26 @@ export function readSchedulerOptions(): SchedulerOptions | null {
   }
 
   return { apiHost, apiKey, namespace, actionName };
+}
+
+function readWebEndpoint(): WebEndpoint | null {
+  const url = (process.env.POSTCARD_PUBLIC_URL ?? "").trim().replace(/\/+$/, "");
+  const secret = (process.env.POSTCARD_FUNCTION_SECRET ?? "").trim();
+
+  if (!url || !secret) {
+    return null;
+  }
+
+  return { url, secret };
+}
+
+export function readSchedulerOptions(): SchedulerOptions | null {
+  const platform = readPlatformCredentials();
+  const web = readWebEndpoint();
+
+  if (!platform && !web) {
+    return null;
+  }
+
+  return { platform, web };
 }

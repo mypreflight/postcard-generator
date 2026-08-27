@@ -3,7 +3,7 @@ import { ProviderError } from "./errors";
 import { describeError, Logger, stackOf } from "./logger";
 import { buildPrompt } from "./prompt";
 import { type Defaults, parseRequest, type RequestParams } from "./request";
-import type { Scheduler } from "./scheduler";
+import type { Handoff, Scheduler } from "./scheduler";
 import type { SpacesClient } from "./spaces";
 import { CONTENT_TYPES, EXTENSIONS, type Postcard, type PostcardRequest } from "./types";
 
@@ -13,6 +13,8 @@ export type HandlerResponse = {
   statusCode: number;
   body: unknown;
 };
+
+type Acceptance = { accepted: HandlerResponse } | { refused: string };
 
 const ACCEPTED = 202;
 
@@ -24,12 +26,7 @@ function describeRequest(params: HandlerParams): string {
     `country=${params.country ?? "-"}`,
     `continent=${params.continent ?? "-"}`,
     `uuid=${params.uuid ?? "-"}`,
-    params.size ? `size=${params.size}` : "",
-    params.quality ? `quality=${params.quality}` : "",
-    params.format ? `format=${params.format}` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  ].join(" ");
 }
 
 function isBackgroundActivation(params: HandlerParams): boolean {
@@ -64,52 +61,48 @@ async function drawAndStore(client: OpenAiClient, spaces: SpacesClient, request:
   };
 }
 
-/**
- * Hands the render to a background activation and answers where it will land. Answers null when the
- * platform would not take it, so the render still happens inline rather than being lost.
- */
-async function accept(
-  scheduler: Scheduler,
-  spaces: SpacesClient,
-  request: PostcardRequest,
-): Promise<HandlerResponse | null> {
+async function accept(scheduler: Scheduler, spaces: SpacesClient, request: PostcardRequest): Promise<Acceptance> {
   const { key, url } = spaces.locate(objectName(request));
 
+  let handoff: Handoff;
+
   try {
-    await scheduler.schedule({
+    handoff = await scheduler.schedule({
       city: request.city,
       country: request.country,
       continent: request.continent,
       uuid: request.uuid,
-      size: request.size,
-      quality: request.quality,
-      format: request.format,
       background: true,
     });
   } catch (error) {
+    const refused = describeError(error);
+
     logger.warn(
       `Could not hand ${request.city}, ${request.country} to a background activation, ` +
-        `so it is drawn while the caller waits: ${describeError(error)}`,
+        `so it is drawn while the caller waits: ${refused}`,
     );
 
-    return null;
+    return { refused };
   }
 
-  logger.log(`Accepted ${request.city}, ${request.country}. The art will appear at ${key}.`);
+  logger.log(`Accepted ${request.city}, ${request.country} over ${handoff}. The art will appear at ${key}.`);
 
   return {
-    statusCode: ACCEPTED,
-    body: {
-      status: "accepted",
-      city: request.city,
-      country: request.country,
-      continent: request.continent,
-      uuid: request.uuid,
-      size: request.size,
-      quality: request.quality,
-      format: request.format,
-      key,
-      url,
+    accepted: {
+      statusCode: ACCEPTED,
+      body: {
+        status: "accepted",
+        city: request.city,
+        country: request.country,
+        continent: request.continent,
+        uuid: request.uuid,
+        size: request.size,
+        quality: request.quality,
+        format: request.format,
+        key,
+        url,
+        handoff: { mode: handoff },
+      },
     },
   };
 }
@@ -126,19 +119,26 @@ export async function handleRequest(
   try {
     const request = parseRequest(params, defaults);
 
-    if (scheduler && !isBackgroundActivation(params)) {
-      const accepted = await accept(scheduler, spaces, request);
+    let refused: string | null = null;
 
-      if (accepted) {
-        return accepted;
+    if (scheduler && !isBackgroundActivation(params)) {
+      const acceptance = await accept(scheduler, spaces, request);
+
+      if ("accepted" in acceptance) {
+        return acceptance.accepted;
       }
+
+      refused = acceptance.refused;
     }
 
     const postcard = await drawAndStore(client, spaces, request);
 
     logger.log(`Served ${describeRequest(params)} in ${Date.now() - startedAt}ms.`);
 
-    return { statusCode: 200, body: postcard };
+    return {
+      statusCode: 200,
+      body: refused ? { ...postcard, handoff: { mode: "inline", reason: refused } } : postcard,
+    };
   } catch (error) {
     if (error instanceof ProviderError) {
       logger.warn(

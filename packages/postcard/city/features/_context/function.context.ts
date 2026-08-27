@@ -1,6 +1,6 @@
-import { type DataTable, Then, When } from "@cucumber/cucumber";
+import { After, type DataTable, Given, Then, When } from "@cucumber/cucumber";
 import expect from "expect";
-import { main } from "../../src/function";
+import { main, resetClient } from "../../src/function";
 import { deepCompare } from "../_helper/deep-compare";
 
 let statusCode: number;
@@ -22,7 +22,10 @@ type Params = {
   size?: string;
   quality?: string;
   format?: string;
+  prompt?: string;
 };
+
+const configuredFormat = process.env.POSTCARD_FORMAT;
 
 async function invoke(params: Params): Promise<void> {
   const result = await main(params);
@@ -32,6 +35,21 @@ async function invoke(params: Params): Promise<void> {
 }
 
 const somewhere = { country: SOME_COUNTRY, continent: SOME_CONTINENT };
+
+Given("the function is configured to store {string}", (format: string) => {
+  process.env.POSTCARD_FORMAT = format;
+  resetClient();
+});
+
+After(() => {
+  if (configuredFormat === undefined) {
+    delete process.env.POSTCARD_FORMAT;
+
+    return;
+  }
+
+  process.env.POSTCARD_FORMAT = configuredFormat;
+});
 
 When("I ask for a postcard of {string}", async (city: string) => {
   await invoke({ city, ...somewhere, uuid: SOME_UUID });

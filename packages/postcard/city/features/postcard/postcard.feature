@@ -44,10 +44,8 @@ Feature: Drawing a city postcard
 
   Scenario: A png postcard is stored under a png name
     Given OpenAI draws the postcard
-    When I ask for a postcard with:
-      | city   | Munich                               |
-      | uuid   | 11111111-2222-4333-8444-555555555555 |
-      | format | png                                  |
+    And the function is configured to store "png"
+    When I ask for a postcard of "Munich" as "11111111-2222-4333-8444-555555555555"
     Then the response status should be 200
     And the postcard should have been stored at "/mypreflight-postcards/postcards/11111111-2222-4333-8444-555555555555.png"
     And the response property "key" should be "postcards/11111111-2222-4333-8444-555555555555.png"
@@ -81,7 +79,7 @@ Feature: Drawing a city postcard
     And the prompt sent to OpenAI should contain "Set the exact city name TARGET_CITY in uppercase"
     And the prompt sent to OpenAI should contain "All text and lettering must be in English."
 
-  Scenario: Size, quality and format can be asked for per request
+  Scenario: Size, quality and format are configuration, so a caller cannot ask for them
     Given OpenAI draws the postcard
     When I ask for a postcard with:
       | city    | Gdańsk    |
@@ -89,21 +87,20 @@ Feature: Drawing a city postcard
       | quality | low       |
       | format  | png       |
     Then the response status should be 200
-    And the response property "contentType" should be "image/png"
-    And OpenAI should have been asked for "size" "1024x1024"
-    And OpenAI should have been asked for "quality" "low"
-    And OpenAI should have been asked for "output_format" "png"
+    And the response property "contentType" should be "image/jpeg"
+    And OpenAI should have been asked for "size" "1152x1536"
+    And OpenAI should have been asked for "quality" "high"
+    And OpenAI should have been asked for "output_format" "jpeg"
 
   Scenario: Compression is sent for JPEG only
     Given OpenAI draws the postcard
     When I ask for a postcard of "Munich"
     Then OpenAI should have been asked for "output_compression" "80"
 
-  Scenario: Compression is left out of a PNG request
+  Scenario: Compression is left out when png is configured
     Given OpenAI draws the postcard
-    When I ask for a postcard with:
-      | city   | Munich |
-      | format | png    |
+    And the function is configured to store "png"
+    When I ask for a postcard of "Munich"
     Then OpenAI should not have been asked for "output_compression"
 
   Scenario: The same postcard is drawn once and served from cache afterwards
@@ -133,14 +130,5 @@ Feature: Drawing a city postcard
     Given OpenAI draws the postcard
     When I ask for a postcard of "Munich"
     And I ask for a postcard of "Warsaw"
-    Then the response status should be 200
-    And OpenAI should have been asked to draw 2 times
-
-  Scenario: The same city in another format is drawn again
-    Given OpenAI draws the postcard
-    When I ask for a postcard of "Munich"
-    And I ask for a postcard with:
-      | city   | Munich |
-      | format | png    |
     Then the response status should be 200
     And OpenAI should have been asked to draw 2 times

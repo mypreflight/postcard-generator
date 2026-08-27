@@ -120,20 +120,26 @@ rather than restating them.
 The function takes arguments, not paths — as query parameters over HTTP, or as the `args` object when invoked through
 the DigitalOcean API.
 
-| Argument  | Default              | Meaning                                                                        |
-| --------- | -------------------- | ------------------------------------------------------------------------------ |
-| `city`    | — (required)         | The city to draw.                                                              |
-| `uuid`    | — (required)         | Names the stored object. Lowercased; anything but a uuid is refused.            |
-| `size`    | `POSTCARD_SIZE`      | `WIDTHxHEIGHT`, both sides divisible by 16, within a 1:3 to 3:1 aspect ratio.   |
-| `quality` | `POSTCARD_QUALITY`   | `auto`, `low`, `medium` or `high`.                                             |
-| `format`  | `POSTCARD_FORMAT`    | `jpeg` or `png`.                                                               |
+| Argument    | Default      | Meaning                                                                       |
+| ----------- | ------------ | ----------------------------------------------------------------------------- |
+| `city`      | — (required) | The city to draw.                                                             |
+| `country`   | — (required) | The country it is in, in English. Settles which city is meant.                 |
+| `continent` | — (required) | The continent it is on, in English.                                           |
+| `uuid`      | — (required) | Names the stored object. Lowercased; anything but a uuid is refused.           |
 
-It answers with where the postcard was stored and everything it was drawn from, so a caller can reproduce or
-attribute the render later:
+**Those four are the whole parameter surface.** What is drawn and how — the prompt, the size, the quality, the format
+and the JPEG compression — is the function's own configuration, read from its environment at cold start. A caller
+names a place and an object and has no say over the render, so no caller can drive up the spend or put words in the
+prompt. Anything else that arrives is ignored rather than honoured.
+
+It answers with where the postcard was stored and what it was drawn from — the `prompt` and the render settings are
+output, an echo of the configuration above, so a render can be attributed or reproduced later:
 
 ```json
 {
   "city": "Munich",
+  "country": "Germany",
+  "continent": "Europe",
   "uuid": "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b",
   "model": "gpt-image-2",
   "size": "1152x1536",
@@ -143,7 +149,8 @@ attribute the render later:
   "bytes": 312044,
   "prompt": "TARGET_CITY = \"Munich\" Full-bleed vertical 3:4 minimalist flat-vector travel art poster …",
   "key": "postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg",
-  "url": "https://mypreflight-postcards.fra1.digitaloceanspaces.com/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+  "url": "https://postcards.mypreflight.io/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg",
+  "handoff": { "mode": "inline", "reason": "no platform credentials on board" }
 }
 ```
 
@@ -168,27 +175,38 @@ and quality regularly takes longer than 40 seconds, so waiting for one was never
 non-blocking activation of itself and answers `202` at once with the `key` and `url` the art will appear under. Only a
 malformed request is answered synchronously, as a `400`, because that is the one failure the caller can act on.
 
-The hand-off uses the `__OW_API_HOST`, `__OW_API_KEY`, `__OW_NAMESPACE` and `__OW_ACTION_NAME` the platform injects
-into every action, so it needs no credentials of its own — `src/scheduler.ts` is a single authenticated `POST` to
-`actions/<package>/<action>?blocking=false`. The background activation is the same code, told it is the background
-activation by a `background: true` argument the web caller never sets. Nothing is retained about it: App Platform
-functions components run in a namespace `doctl` does not surface, so that activation is not retrievable afterwards.
+**The hand-off has two routes, tried in order.** The first is the platform API: the `__OW_API_HOST`, `__OW_API_KEY`,
+`__OW_NAMESPACE` and `__OW_ACTION_NAME` an OpenWhisk action is normally given, spent on a single authenticated `POST`
+to `actions/<package>/<action>?blocking=false`. An App Platform functions component does not always get those
+variables, and without them the first route is not even attempted.
 
-**Renders are never lost to a failed hand-off.** Off the platform — the dev server, the test suite — those variables
-are absent, and if the platform refuses the invocation the error is logged. Either way the function falls back to
-drawing while the caller waits, which is the old behaviour: the platform cuts the caller off at 40 seconds and the
-render finishes anyway.
+The second route needs nothing from the platform: the function calls **its own public endpoint**, `POSTCARD_PUBLIC_URL`,
+with the same shared secret the original caller used. A web invocation answers only when the render is finished, so
+the connection is deliberately abandoned after two seconds — the activation it started runs on regardless, which is
+the whole point of the 40-second cut-off being the caller's problem and not the render's. Either route reaches the
+same code, told it is the background activation by a `background: true` argument the web caller never sets.
+
+**Which route ran is in the answer, not in the logs.** App Platform functions components run in a namespace `doctl`
+does not surface and whose activations are not retrievable, so `console.log` from inside a render is effectively write
+-only. Every answer therefore carries `handoff`: `{ "mode": "activation" }` or `{ "mode": "web" }` on a `202`, and
+`{ "mode": "inline", "reason": "…" }` on a `200`, where the reason says why each route refused. A caller that sees
+`inline` is looking at the one case that makes it wait, with the explanation attached.
+
+**Renders are never lost to a failed hand-off.** Off the platform — the dev server, the test suite — neither route is
+configured, and if both refuse the function falls back to drawing while the caller waits, which is the old behaviour:
+the platform cuts the caller off at 40 seconds and the render finishes anyway.
 
 **This is why the caller chooses the uuid.** The object location is known before the render starts, so a `202` costs
 the caller nothing: it polls `<prefix><uuid>.<ext>` in the bucket until the object appears. A render that fails after
 the hand-off is only visible as art that never appears, so a caller that polls needs a deadline of its own.
 
-**The default format is JPEG.** A `gpt-image-2` PNG poster at 3:4 is several megabytes; JPEG at `POSTCARD_COMPRESSION`
-is a fraction of that for artwork this flat. `format=png` is still accepted, and now that the bytes never pass through
-the result there is no ceiling on it beyond the bucket.
+**The configured format is JPEG.** A `gpt-image-2` PNG poster at 3:4 is several megabytes; JPEG at
+`POSTCARD_COMPRESSION` is a fraction of that for artwork this flat. `POSTCARD_FORMAT=png` is a supported setting, and
+now that the bytes never pass through the result there is no ceiling on it beyond the bucket.
 
 **WebP is not offered at all.** The model accepts `output_format: webp` and [answers with PNG bytes anyway][webp-bug],
-so the field would lie about what came back. `format=webp` is rejected with a `400` rather than silently honoured.
+so the field would lie about what came back. `POSTCARD_FORMAT=webp` is refused as a misconfiguration rather than
+silently honoured.
 
 ### Where the postcards land
 
@@ -247,6 +265,11 @@ First deployment needs the component adding to the app spec, together with four 
 `OPENAI_API_KEY`, `SPACES_KEY` and `SPACES_SECRET`. Everything else the function reads is set as a literal in
 `project.yml` — only what appears in a package `environment:` block reaches the runtime, so a variable set on the
 component and absent there has no effect.
+
+`POSTCARD_PUBLIC_URL` is one of those literals and it is the function's own address, so it has to match where the app
+routes this component: the ingress rule for `postcard-generator` on the app's default domain, plus `/postcard/city`.
+Get it wrong and the second hand-off route refuses, which shows up as `handoff.mode: "inline"` in every answer rather
+than as a broken deployment.
 
 App Platform rebuilds the component whenever `main` moves, so the workflow here only tags the version and drafts the
 GitHub release. There is no image and no registry: App Platform builds from this repository using `project.yml`.

@@ -1,6 +1,7 @@
 import type { OpenAiClient } from "./client";
 import { OpenAiUnavailableError, PostcardRejectedError, SpacesUnavailableError } from "./errors";
 import { handleRequest } from "./handler";
+import { buildPrompt } from "./prompt";
 import type { Defaults } from "./request";
 import type { Scheduler } from "./scheduler";
 import type { SpacesClient } from "./spaces";
@@ -33,7 +34,7 @@ function fakeSpaces(overrides: Partial<SpacesClient> = {}): SpacesClient {
 }
 
 function fakeScheduler(overrides: Partial<Scheduler> = {}): Scheduler {
-  return { schedule: jest.fn().mockResolvedValue(undefined), ...overrides } as unknown as Scheduler;
+  return { schedule: jest.fn().mockResolvedValue("activation"), ...overrides } as unknown as Scheduler;
 }
 
 describe("handleRequest", () => {
@@ -73,14 +74,14 @@ describe("handleRequest", () => {
     expect(response.body).not.toHaveProperty("image");
   });
 
-  it("names the object after the uuid, with the extension of the format", async () => {
+  it("names the object after the uuid, with the extension of the configured format", async () => {
     const spaces = fakeSpaces();
 
     await handleRequest(
       fakeClient(),
       spaces,
-      { city: "Munich", country: "Germany", continent: "Europe", uuid, format: "png" },
-      defaults,
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      { ...defaults, format: "png" },
     );
 
     expect(spaces.store).toHaveBeenCalledWith(`${uuid}.png`, expect.any(Buffer), "image/png");
@@ -112,22 +113,14 @@ describe("handleRequest", () => {
     expect(response.body).toHaveProperty("prompt", expect.stringContaining('TARGET_CITY = "Kraków"'));
   });
 
-  it("passes the request through to the client untouched", async () => {
+  it("passes the place through to the client untouched, drawn as the configuration says", async () => {
     const client = fakeClient();
 
     await handleRequest(
       client,
       fakeSpaces(),
-      {
-        city: "Gdańsk",
-        country: "Poland",
-        continent: "Europe",
-        uuid,
-        size: "1024x1024",
-        quality: "low",
-        format: "png",
-      },
-      defaults,
+      { city: "Gdańsk", country: "Poland", continent: "Europe", uuid },
+      { ...defaults, size: "1024x1024", quality: "low", format: "png" },
     );
 
     expect(client.draw).toHaveBeenCalledWith(
@@ -145,7 +138,29 @@ describe("handleRequest", () => {
     );
   });
 
-  it("falls back to the configured defaults when nothing is asked for", async () => {
+  it("draws what the configuration says even when the caller asks for something else", async () => {
+    const client = fakeClient();
+
+    const asked = {
+      city: "Munich",
+      country: "Germany",
+      continent: "Europe",
+      uuid,
+      size: "3840x2160",
+      quality: "high",
+      format: "png",
+      prompt: "draw a cat instead",
+    } as unknown as Parameters<typeof handleRequest>[2];
+
+    await handleRequest(client, fakeSpaces(), asked, { ...defaults, size: "1024x1024", quality: "low" });
+
+    const [request, prompt] = (client.draw as jest.Mock).mock.calls[0];
+
+    expect(request).toMatchObject({ size: "1024x1024", quality: "low", format: "jpeg" });
+    expect(prompt).toBe(buildPrompt("Munich", "Germany", "Europe"));
+  });
+
+  it("draws at the configured quality and format", async () => {
     const client = fakeClient();
 
     await handleRequest(
@@ -296,6 +311,7 @@ describe("handleRequest, handing the render to a background activation", () => {
       format: "jpeg",
       key: `postcards/${uuid}.jpg`,
       url: `https://postcards.mypreflight.io/postcards/${uuid}.jpg`,
+      handoff: { mode: "activation" },
     });
     expect(client.draw).not.toHaveBeenCalled();
   });
@@ -310,9 +326,6 @@ describe("handleRequest, handing the render to a background activation", () => {
       country: "Germany",
       continent: "Europe",
       uuid,
-      size: "1152x1536",
-      quality: "high",
-      format: "jpeg",
       background: true,
     });
   });
@@ -347,5 +360,39 @@ describe("handleRequest, handing the render to a background activation", () => {
 
     expect(response.statusCode).toBe(200);
     expect(client.draw).toHaveBeenCalledTimes(1);
+  });
+
+  it("says in its answer that it drew inline, and why, so a broken hand-off is not silent", async () => {
+    const scheduler = fakeScheduler({
+      schedule: jest.fn().mockRejectedValue(new Error("no activation for you")),
+    } as unknown as Partial<Scheduler>);
+
+    const response = await handleRequest(fakeClient(), fakeSpaces(), munich, defaults, scheduler);
+
+    expect(response.body).toMatchObject({
+      key: `postcards/${uuid}.jpg`,
+      handoff: { mode: "inline", reason: "Error: no activation for you" },
+    });
+  });
+
+  it("names the way the render was handed off, so the caller can tell a web hand-off from an activation", async () => {
+    const scheduler = fakeScheduler({ schedule: jest.fn().mockResolvedValue("web") } as unknown as Partial<Scheduler>);
+
+    const response = await handleRequest(fakeClient(), fakeSpaces(), munich, defaults, scheduler);
+
+    expect(response.statusCode).toBe(202);
+    expect(response.body).toMatchObject({ handoff: { mode: "web" } });
+  });
+
+  it("leaves the answer of the background activation itself free of hand-off talk", async () => {
+    const response = await handleRequest(
+      fakeClient(),
+      fakeSpaces(),
+      { ...munich, background: true },
+      defaults,
+      fakeScheduler(),
+    );
+
+    expect(response.body).not.toHaveProperty("handoff");
   });
 });
