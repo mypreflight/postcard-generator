@@ -6,8 +6,22 @@ export type Quality = (typeof QUALITIES)[number];
 
 export type Format = (typeof FORMATS)[number];
 
+export const CONTINENTS = [
+  "Africa",
+  "Antarctica",
+  "Asia",
+  "Europe",
+  "North America",
+  "Oceania",
+  "South America",
+] as const;
+
+export type Continent = (typeof CONTINENTS)[number];
+
 export type PostcardRequest = {
   city: string;
+  country: string;
+  continent: Continent;
   uuid: string;
   size: string;
   quality: Quality;
@@ -27,6 +41,8 @@ export type StoredObject = {
 
 export type Postcard = {
   city: string;
+  country: string;
+  continent: Continent;
   uuid: string;
   model: string;
   size: string;

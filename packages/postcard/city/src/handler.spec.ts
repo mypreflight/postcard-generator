@@ -30,11 +30,18 @@ function fakeSpaces(overrides: Partial<SpacesClient> = {}): SpacesClient {
 
 describe("handleRequest", () => {
   it("answers with where the postcard was stored and how it was drawn", async () => {
-    const response = await handleRequest(fakeClient(), fakeSpaces(), { city: "Munich", uuid }, defaults);
+    const response = await handleRequest(
+      fakeClient(),
+      fakeSpaces(),
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      defaults,
+    );
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toMatchObject({
       city: "Munich",
+      country: "Germany",
+      continent: "Europe",
       uuid,
       model: "gpt-image-2",
       size: "1152x1536",
@@ -48,7 +55,12 @@ describe("handleRequest", () => {
   });
 
   it("never answers with the image itself", async () => {
-    const response = await handleRequest(fakeClient(), fakeSpaces(), { city: "Munich", uuid }, defaults);
+    const response = await handleRequest(
+      fakeClient(),
+      fakeSpaces(),
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      defaults,
+    );
 
     expect(response.body).not.toHaveProperty("image");
   });
@@ -56,7 +68,12 @@ describe("handleRequest", () => {
   it("names the object after the uuid, with the extension of the format", async () => {
     const spaces = fakeSpaces();
 
-    await handleRequest(fakeClient(), spaces, { city: "Munich", uuid, format: "png" }, defaults);
+    await handleRequest(
+      fakeClient(),
+      spaces,
+      { city: "Munich", country: "Germany", continent: "Europe", uuid, format: "png" },
+      defaults,
+    );
 
     expect(spaces.store).toHaveBeenCalledWith(`${uuid}.png`, expect.any(Buffer), "image/png");
   });
@@ -64,7 +81,12 @@ describe("handleRequest", () => {
   it("stores the decoded image rather than its base64", async () => {
     const spaces = fakeSpaces();
 
-    await handleRequest(fakeClient(), spaces, { city: "Munich", uuid }, defaults);
+    await handleRequest(
+      fakeClient(),
+      spaces,
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      defaults,
+    );
 
     const [, body] = (spaces.store as jest.Mock).mock.calls[0];
     expect(Buffer.isBuffer(body)).toBe(true);
@@ -72,7 +94,12 @@ describe("handleRequest", () => {
   });
 
   it("returns the prompt it sent, so a caller can tell what was asked for", async () => {
-    const response = await handleRequest(fakeClient(), fakeSpaces(), { city: "Kraków", uuid }, defaults);
+    const response = await handleRequest(
+      fakeClient(),
+      fakeSpaces(),
+      { city: "Kraków", country: "Poland", continent: "Europe", uuid },
+      defaults,
+    );
 
     expect(response.body).toHaveProperty("prompt", expect.stringContaining('TARGET_CITY = "Kraków"'));
   });
@@ -83,12 +110,29 @@ describe("handleRequest", () => {
     await handleRequest(
       client,
       fakeSpaces(),
-      { city: "Gdańsk", uuid, size: "1024x1024", quality: "low", format: "png" },
+      {
+        city: "Gdańsk",
+        country: "Poland",
+        continent: "Europe",
+        uuid,
+        size: "1024x1024",
+        quality: "low",
+        format: "png",
+      },
       defaults,
     );
 
     expect(client.draw).toHaveBeenCalledWith(
-      { city: "Gdańsk", uuid, size: "1024x1024", quality: "low", format: "png", compression: 80 },
+      {
+        city: "Gdańsk",
+        country: "Poland",
+        continent: "Europe",
+        uuid,
+        size: "1024x1024",
+        quality: "low",
+        format: "png",
+        compression: 80,
+      },
       expect.any(String),
     );
   });
@@ -99,7 +143,7 @@ describe("handleRequest", () => {
     await handleRequest(
       client,
       fakeSpaces(),
-      { city: "Munich", uuid },
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
       {
         ...defaults,
         quality: "low",
@@ -131,7 +175,12 @@ describe("handleRequest", () => {
     const client = fakeClient();
     const spaces = fakeSpaces();
 
-    const response = await handleRequest(client, spaces, { city: "Munich" }, defaults);
+    const response = await handleRequest(
+      client,
+      spaces,
+      { city: "Munich", country: "Germany", continent: "Europe" },
+      defaults,
+    );
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toEqual({
@@ -146,7 +195,12 @@ describe("handleRequest", () => {
       draw: jest.fn().mockRejectedValue(new PostcardRejectedError("blocked")),
     } as Partial<OpenAiClient>);
 
-    const response = await handleRequest(client, fakeSpaces(), { city: "Munich", uuid }, defaults);
+    const response = await handleRequest(
+      client,
+      fakeSpaces(),
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      defaults,
+    );
 
     expect(response.statusCode).toBe(422);
     expect(response.body).toEqual({
@@ -163,7 +217,12 @@ describe("handleRequest", () => {
       draw: jest.fn().mockRejectedValue(new OpenAiUnavailableError()),
     } as Partial<OpenAiClient>);
 
-    const response = await handleRequest(client, fakeSpaces(), { city: "Munich", uuid }, defaults);
+    const response = await handleRequest(
+      client,
+      fakeSpaces(),
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      defaults,
+    );
 
     expect(response.statusCode).toBe(502);
     expect(response.body).toHaveProperty("error.code", "OPENAI_UNAVAILABLE");
@@ -174,7 +233,12 @@ describe("handleRequest", () => {
       store: jest.fn().mockRejectedValue(new SpacesUnavailableError()),
     } as Partial<SpacesClient>);
 
-    const response = await handleRequest(fakeClient(), spaces, { city: "Munich", uuid }, defaults);
+    const response = await handleRequest(
+      fakeClient(),
+      spaces,
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      defaults,
+    );
 
     expect(response.statusCode).toBe(502);
     expect(response.body).toEqual({
@@ -189,7 +253,12 @@ describe("handleRequest", () => {
   it("hides an unexpected crash behind an internal error", async () => {
     const client = fakeClient({ draw: jest.fn().mockRejectedValue(new Error("boom")) } as Partial<OpenAiClient>);
 
-    const response = await handleRequest(client, fakeSpaces(), { city: "Munich", uuid }, defaults);
+    const response = await handleRequest(
+      client,
+      fakeSpaces(),
+      { city: "Munich", country: "Germany", continent: "Europe", uuid },
+      defaults,
+    );
 
     expect(response.statusCode).toBe(500);
     expect(response.body).toEqual({

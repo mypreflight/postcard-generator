@@ -56,7 +56,9 @@ export class OpenAiClient {
       const response = await this.post(prompt, request);
       const image = await this.readImage(response);
 
-      this.logger.log(`Drew ${request.city} as ${image.bytes} ${request.format} bytes in ${Date.now() - startedAt}ms.`);
+      this.logger.log(
+        `Drew ${request.city}, ${request.country} as ${image.bytes} ${request.format} bytes in ${Date.now() - startedAt}ms.`,
+      );
 
       return image;
     });
@@ -212,6 +214,8 @@ function decodedBytes(base64: string): number {
 function cacheKey(request: PostcardRequest): string {
   return [
     request.city.toLowerCase(),
+    request.country.toLowerCase(),
+    request.continent.toLowerCase(),
     request.size,
     request.quality,
     request.format,

@@ -18,6 +18,8 @@ const logger = new Logger("PostcardHandler");
 function describeRequest(params: HandlerParams): string {
   return [
     `city=${params.city ?? "-"}`,
+    `country=${params.country ?? "-"}`,
+    `continent=${params.continent ?? "-"}`,
     `uuid=${params.uuid ?? "-"}`,
     params.size ? `size=${params.size}` : "",
     params.quality ? `quality=${params.quality}` : "",
@@ -28,7 +30,7 @@ function describeRequest(params: HandlerParams): string {
 }
 
 async function drawAndStore(client: OpenAiClient, spaces: SpacesClient, request: PostcardRequest): Promise<Postcard> {
-  const prompt = buildPrompt(request.city);
+  const prompt = buildPrompt(request.city, request.country, request.continent);
   const image = await client.draw(request, prompt);
   const contentType = CONTENT_TYPES[request.format];
 
@@ -40,6 +42,8 @@ async function drawAndStore(client: OpenAiClient, spaces: SpacesClient, request:
 
   return {
     city: request.city,
+    country: request.country,
+    continent: request.continent,
     uuid: request.uuid,
     model: client.model,
     size: request.size,
