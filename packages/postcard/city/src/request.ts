@@ -1,8 +1,18 @@
 import { BadRequestError } from "./errors";
-import { FORMATS, type Format, type PostcardRequest, QUALITIES, type Quality } from "./types";
+import {
+  CONTINENTS,
+  type Continent,
+  FORMATS,
+  type Format,
+  type PostcardRequest,
+  QUALITIES,
+  type Quality,
+} from "./types";
 
 export type RequestParams = {
   city?: string;
+  country?: string;
+  continent?: string;
   uuid?: string;
   size?: string;
   quality?: string;
@@ -20,7 +30,13 @@ const MAX_CITY_LENGTH = 64;
 
 const MAX_CITY_WORDS = 5;
 
+const MAX_COUNTRY_LENGTH = 64;
+
+const MAX_COUNTRY_WORDS = 8;
+
 const CITY_PATTERN = /^[\p{Script=Latin}\p{Mark}0-9 .'’-]+$/u;
+
+const COUNTRY_PATTERN = /^[\p{Script=Latin}\p{Mark}0-9 .,'’&()-]+$/u;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -58,6 +74,48 @@ export function parseCity(value: string | undefined): string {
   }
 
   return city;
+}
+
+export function parseCountry(value: string | undefined): string {
+  const country = (value ?? "").trim();
+
+  if (!country) {
+    throw new BadRequestError("Parameter country is required.");
+  }
+
+  if (country.length > MAX_COUNTRY_LENGTH) {
+    throw new BadRequestError(`Parameter country may not exceed ${MAX_COUNTRY_LENGTH} characters.`);
+  }
+
+  if (!COUNTRY_PATTERN.test(country)) {
+    throw new BadRequestError(
+      "Parameter country may only contain Latin letters, digits, spaces, apostrophes, dots, commas, ampersands and brackets.",
+    );
+  }
+
+  if (country.split(/\s+/).length > MAX_COUNTRY_WORDS) {
+    throw new BadRequestError(
+      `Parameter country is a country name, not a sentence, so it may not exceed ${MAX_COUNTRY_WORDS} words.`,
+    );
+  }
+
+  return country;
+}
+
+export function parseContinent(value: string | undefined): Continent {
+  const continent = (value ?? "").trim();
+
+  if (!continent) {
+    throw new BadRequestError("Parameter continent is required.");
+  }
+
+  const known = CONTINENTS.find((candidate) => candidate.toLowerCase() === continent.toLowerCase());
+
+  if (!known) {
+    throw new BadRequestError(`Parameter continent must be one of ${CONTINENTS.join(", ")}, got "${continent}".`);
+  }
+
+  return known;
 }
 
 export function parseUuid(value: string | undefined): string {
@@ -132,6 +190,8 @@ export function parseFormat(value: string | undefined, fallback: Format): Format
 export function parseRequest(params: RequestParams, defaults: Defaults): PostcardRequest {
   return {
     city: parseCity(params.city),
+    country: parseCountry(params.country),
+    continent: parseContinent(params.continent),
     uuid: parseUuid(params.uuid),
     size: parseSize(params.size, defaults.size),
     quality: parseQuality(params.quality, defaults.quality),

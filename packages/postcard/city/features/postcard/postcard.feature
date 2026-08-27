@@ -14,6 +14,8 @@ Feature: Drawing a city postcard
       """
       {
         "city": "Munich",
+        "country": "Germany",
+        "continent": "Europe",
         "uuid": "11111111-2222-4333-8444-555555555555",
         "model": "gpt-image-2",
         "size": "1152x1536",

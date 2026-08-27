@@ -9,8 +9,15 @@ let body: unknown;
 /** The uuid a scenario gets when it is not the uuid itself that is under test. */
 export const SOME_UUID = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
 
+/** The place a scenario gets when it is not the place itself that is under test. */
+export const SOME_COUNTRY = "Germany";
+
+export const SOME_CONTINENT = "Europe";
+
 type Params = {
   city?: string;
+  country?: string;
+  continent?: string;
   uuid?: string;
   size?: string;
   quality?: string;
@@ -24,24 +31,41 @@ async function invoke(params: Params): Promise<void> {
   body = result.body;
 }
 
+const somewhere = { country: SOME_COUNTRY, continent: SOME_CONTINENT };
+
 When("I ask for a postcard of {string}", async (city: string) => {
-  await invoke({ city, uuid: SOME_UUID });
+  await invoke({ city, ...somewhere, uuid: SOME_UUID });
 });
 
 When("I ask for a postcard of {string} as {string}", async (city: string, uuid: string) => {
-  await invoke({ city, uuid });
+  await invoke({ city, ...somewhere, uuid });
 });
 
+When(
+  "I ask for a postcard of {string} in {string} on {string}",
+  async (city: string, country: string, continent: string) => {
+    await invoke({ city, country, continent, uuid: SOME_UUID });
+  },
+);
+
 When("I ask for a postcard with:", async (table: DataTable) => {
-  await invoke({ uuid: SOME_UUID, ...(table.rowsHash() as Params) });
+  await invoke({ ...somewhere, uuid: SOME_UUID, ...(table.rowsHash() as Params) });
 });
 
 When("I ask for a postcard without a city", async () => {
-  await invoke({ uuid: SOME_UUID });
+  await invoke({ ...somewhere, uuid: SOME_UUID });
+});
+
+When("I ask for a postcard without a country", async () => {
+  await invoke({ city: "Munich", continent: SOME_CONTINENT, uuid: SOME_UUID });
+});
+
+When("I ask for a postcard without a continent", async () => {
+  await invoke({ city: "Munich", country: SOME_COUNTRY, uuid: SOME_UUID });
 });
 
 When("I ask for a postcard without a uuid", async () => {
-  await invoke({ city: "Munich" });
+  await invoke({ city: "Munich", ...somewhere });
 });
 
 Then("the response status should be {int}", (expected: number) => {

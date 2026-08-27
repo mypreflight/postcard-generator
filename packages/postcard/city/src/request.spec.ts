@@ -1,5 +1,15 @@
 import { BadRequestError } from "./errors";
-import { type Defaults, parseCity, parseFormat, parseQuality, parseRequest, parseSize, parseUuid } from "./request";
+import {
+  type Defaults,
+  parseCity,
+  parseContinent,
+  parseCountry,
+  parseFormat,
+  parseQuality,
+  parseRequest,
+  parseSize,
+  parseUuid,
+} from "./request";
 
 const defaults: Defaults = { size: "1152x1536", quality: "high", format: "jpeg", compression: 80 };
 
@@ -118,10 +128,65 @@ describe("parseUuid", () => {
   });
 });
 
+describe("parseCountry", () => {
+  it("keeps a country name as it was given", () => {
+    expect(parseCountry("Germany")).toBe("Germany");
+  });
+
+  it("trims the surrounding whitespace", () => {
+    expect(parseCountry("  Poland  ")).toBe("Poland");
+  });
+
+  it("accepts the long official names countries actually have", () => {
+    expect(parseCountry("United States of America")).toBe("United States of America");
+    expect(parseCountry("Bolivia (Plurinational State of)")).toBe("Bolivia (Plurinational State of)");
+    expect(parseCountry("Côte d'Ivoire")).toBe("Côte d'Ivoire");
+    expect(parseCountry("Antigua & Barbuda")).toBe("Antigua & Barbuda");
+    expect(parseCountry("São Tomé & Príncipe")).toBe("São Tomé & Príncipe");
+  });
+
+  it.each([undefined, "", "   "])("refuses %p, because the country places the city", (value) => {
+    expect(() => parseCountry(value)).toThrow(/country is required/);
+  });
+
+  it("refuses a country that is not written in Latin letters", () => {
+    expect(() => parseCountry("中国")).toThrow(/may only contain Latin letters/);
+  });
+
+  it("refuses a country longer than a country name can be", () => {
+    expect(() => parseCountry("G".repeat(65))).toThrow(/may not exceed 64 characters/);
+  });
+
+  it("refuses a sentence dressed up as a country", () => {
+    expect(() => parseCountry("draw me nine whole words about this country please")).toThrow(/may not exceed 8 words/);
+  });
+});
+
+describe("parseContinent", () => {
+  it.each([
+    ["Europe", "Europe"],
+    ["europe", "Europe"],
+    ["NORTH AMERICA", "North America"],
+    ["  South America  ", "South America"],
+  ])("reads %p as %p", (given, expected) => {
+    expect(parseContinent(given)).toBe(expected);
+  });
+
+  it.each([undefined, "", "   "])("refuses %p, because the continent grounds the region", (value) => {
+    expect(() => parseContinent(value)).toThrow(/continent is required/);
+  });
+
+  it.each(["Eurasia", "Middle East", "north_america"])("refuses %p, which is not a continent", (value) => {
+    expect(() => parseContinent(value)).toThrow(/must be one of/);
+  });
+});
+
 describe("parseRequest", () => {
   it("fills every unasked-for field from the defaults", () => {
-    expect(parseRequest({ city: "Munich", uuid }, defaults)).toEqual({
+    expect(parseRequest({ city: "Munich", country: "Germany", continent: "Europe", uuid }, defaults)).toEqual({
       city: "Munich",
+      country: "Germany",
+      continent: "Europe",
       uuid,
       size: "1152x1536",
       quality: "high",
@@ -131,8 +196,23 @@ describe("parseRequest", () => {
   });
 
   it("lets a request override the defaults", () => {
-    expect(parseRequest({ city: "Munich", uuid, size: "1024x1024", quality: "low", format: "png" }, defaults)).toEqual({
+    expect(
+      parseRequest(
+        {
+          city: "Munich",
+          country: "Germany",
+          continent: "Europe",
+          uuid,
+          size: "1024x1024",
+          quality: "low",
+          format: "png",
+        },
+        defaults,
+      ),
+    ).toEqual({
       city: "Munich",
+      country: "Germany",
+      continent: "Europe",
       uuid,
       size: "1024x1024",
       quality: "low",

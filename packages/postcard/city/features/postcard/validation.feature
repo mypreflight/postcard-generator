@@ -23,6 +23,56 @@ Feature: Refusing nonsense before it costs money
     And OpenAI should have been asked to draw 0 times
     And the bucket should have been asked to store 0 times
 
+  Scenario: A missing country is rejected
+    Given OpenAI draws the postcard
+    When I ask for a postcard without a country
+    Then the response status should be 400
+    And the response body should contain:
+      """
+      {
+        "error": {
+          "code": "BAD_REQUEST",
+          "message": "Parameter country is required.",
+          "status": 400
+        }
+      }
+      """
+    And OpenAI should have been asked to draw 0 times
+    And the bucket should have been asked to store 0 times
+
+  Scenario: A missing continent is rejected
+    Given OpenAI draws the postcard
+    When I ask for a postcard without a continent
+    Then the response status should be 400
+    And the response body should contain:
+      """
+      {
+        "error": {
+          "code": "BAD_REQUEST",
+          "message": "Parameter continent is required.",
+          "status": 400
+        }
+      }
+      """
+    And OpenAI should have been asked to draw 0 times
+    And the bucket should have been asked to store 0 times
+
+  Scenario: A continent that is not a continent is rejected
+    Given OpenAI draws the postcard
+    When I ask for a postcard of "Munich" in "Germany" on "Eurasia"
+    Then the response status should be 400
+    And the response error code should be "BAD_REQUEST"
+    And OpenAI should have been asked to draw 0 times
+    And the bucket should have been asked to store 0 times
+
+  Scenario: A country that is not written in Latin letters is rejected
+    Given OpenAI draws the postcard
+    When I ask for a postcard of "Beijing" in "中国" on "Asia"
+    Then the response status should be 400
+    And the response error code should be "BAD_REQUEST"
+    And OpenAI should have been asked to draw 0 times
+    And the bucket should have been asked to store 0 times
+
   Scenario: A missing uuid is rejected
     Given OpenAI draws the postcard
     When I ask for a postcard without a uuid
