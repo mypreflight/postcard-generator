@@ -4,7 +4,7 @@ import { ProviderError } from "./errors";
 import { type HandlerParams, handleRequest } from "./handler";
 import { describeError, Logger, stackOf } from "./logger";
 import type { Defaults } from "./request";
-import { Scheduler } from "./scheduler";
+import { Scheduler, type SchedulerOptions } from "./scheduler";
 import { SpacesClient } from "./spaces";
 
 const DEFAULT_BASE_URL = "https://api.openai.com";
@@ -55,6 +55,15 @@ function resolveDefaults(): Defaults {
   return defaults;
 }
 
+function describeRoutes(options: SchedulerOptions): string {
+  return [
+    options.platform ? `background activations of ${options.platform.actionName}` : null,
+    options.web ? `web calls to ${options.web.url}` : null,
+  ]
+    .filter(Boolean)
+    .join(", falling back to ");
+}
+
 function resolveScheduler(): Scheduler | null {
   if (scheduler === undefined) {
     const options = readSchedulerOptions();
@@ -63,8 +72,8 @@ function resolveScheduler(): Scheduler | null {
 
     logger.log(
       options
-        ? `Renders are handed to background activations of ${options.actionName}.`
-        : "No platform credentials on board, so renders happen while the caller waits.",
+        ? `Renders are handed to ${describeRoutes(options)}.`
+        : "No way to hand a render off, so renders happen while the caller waits.",
     );
   }
 

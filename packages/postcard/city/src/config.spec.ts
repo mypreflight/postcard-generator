@@ -131,8 +131,10 @@ describe("readSchedulerOptions", () => {
 
   const platform = ["__OW_API_HOST", "__OW_API_KEY", "__OW_NAMESPACE", "__OW_ACTION_NAME"];
 
+  const web = ["POSTCARD_PUBLIC_URL", "POSTCARD_FUNCTION_SECRET"];
+
   beforeEach(() => {
-    for (const key of platform) {
+    for (const key of [...platform, ...web]) {
       delete process.env[key];
     }
   });
@@ -148,7 +150,12 @@ describe("readSchedulerOptions", () => {
     process.env.__OW_ACTION_NAME = "/fn-0123/postcard/city";
   }
 
-  it("answers nothing off the platform, so a render is not handed to an activation that cannot exist", () => {
+  function reachablePublicly(): void {
+    process.env.POSTCARD_PUBLIC_URL = "https://mypreflight.ondigitalocean.app/postcard-generator/postcard/city/";
+    process.env.POSTCARD_FUNCTION_SECRET = "shared-secret";
+  }
+
+  it("answers nothing when a render can be handed neither to an activation nor to itself", () => {
     expect(readSchedulerOptions()).toBeNull();
   });
 
@@ -156,10 +163,25 @@ describe("readSchedulerOptions", () => {
     onPlatform();
 
     expect(readSchedulerOptions()).toEqual({
-      apiHost: "https://faas-fra1-a1b2c3d4.doserverless.co",
-      apiKey: "id:secret",
-      namespace: "fn-0123",
-      actionName: "postcard/city",
+      platform: {
+        apiHost: "https://faas-fra1-a1b2c3d4.doserverless.co",
+        apiKey: "id:secret",
+        namespace: "fn-0123",
+        actionName: "postcard/city",
+      },
+      web: null,
+    });
+  });
+
+  it("reads the endpoint this action can call itself on, without the trailing slash", () => {
+    reachablePublicly();
+
+    expect(readSchedulerOptions()).toEqual({
+      platform: null,
+      web: {
+        url: "https://mypreflight.ondigitalocean.app/postcard-generator/postcard/city",
+        secret: "shared-secret",
+      },
     });
   });
 
@@ -167,13 +189,30 @@ describe("readSchedulerOptions", () => {
     onPlatform();
     process.env.__OW_ACTION_NAME = "postcard/city";
 
-    expect(readSchedulerOptions()).toMatchObject({ actionName: "postcard/city" });
+    expect(readSchedulerOptions()).toMatchObject({ platform: { actionName: "postcard/city" } });
   });
 
-  it.each(platform)("answers nothing when %s is missing", (missing) => {
+  it.each(platform)("keeps no platform credentials when %s is missing", (missing) => {
     onPlatform();
     delete process.env[missing];
 
     expect(readSchedulerOptions()).toBeNull();
+  });
+
+  it.each(web)("keeps no public endpoint when %s is missing", (missing) => {
+    reachablePublicly();
+    delete process.env[missing];
+
+    expect(readSchedulerOptions()).toBeNull();
+  });
+
+  it("keeps both ways when the platform injected credentials and the endpoint is configured", () => {
+    onPlatform();
+    reachablePublicly();
+
+    const options = readSchedulerOptions();
+
+    expect(options?.platform).not.toBeNull();
+    expect(options?.web).not.toBeNull();
   });
 });

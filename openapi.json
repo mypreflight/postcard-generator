@@ -23,7 +23,7 @@
     "/postcard/city": {
       "get": {
         "summary": "Draw a travel poster for a city",
-        "description": "Renders the city with the poster brief, stores the image in Spaces as `<prefix><uuid>.<ext>` and returns the key and url it landed under together with the prompt and render settings. Identical render requests are served from an in-memory cache for a day, for as long as the function instance stays warm, so a second uuid for the same city reuses the drawing and is only stored again.",
+        "description": "Renders the city with the poster brief, stores the image in Spaces as `<prefix><uuid>.<ext>` and returns the key and url it landed under together with the prompt and render settings. The four parameters below are the only ones the function reads: what is drawn and how — size, quality, format, compression and the prompt itself — is the function's own configuration, so a caller names a place and an object and has no say over the render or the spend. Anything else that arrives is ignored. Identical render requests are served from an in-memory cache for a day, for as long as the function instance stays warm, so a second uuid for the same city reuses the drawing and is only stored again.",
         "operationId": "generatePostcard",
         "parameters": [
           {
@@ -121,7 +121,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The render could not be handed to a background activation, so it was drawn while the caller waited and is stored.",
+            "description": "The render could not be handed off, so it was drawn while the caller waited and is stored. The `handoff` field carries the reason every route refused it, because the function's own logs are not retrievable in an App Platform namespace.",
             "content": {
               "application/json": {
                 "schema": {
@@ -131,7 +131,7 @@
             }
           },
           "202": {
-            "description": "The request was validated and the render is running in the background. The normal answer. The body carries where the art will appear; poll that url until it answers. A `202` whose body carries an `activationId` and no `key` comes from the platform rather than the function, and means the render is running but was not acknowledged \u2014 the art still appears under the uuid that was asked for.",
+            "description": "The request was validated and the render is running in the background, either as a platform activation or as a second web call to this same function; the `handoff` field says which. The normal answer. The body carries where the art will appear; poll that url until it answers. A `202` whose body carries an `activationId` and no `key` comes from the platform rather than the function, and means the render is running but was not acknowledged \u2014 the art still appears under the uuid that was asked for.",
             "content": {
               "application/json": {
                 "schema": {
@@ -276,6 +276,31 @@
             "format": "uri",
             "description": "Where the art will be readable once it is stored. Poll this until it answers.",
             "example": "https://postcards.mypreflight.io/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+          },
+          "handoff": {
+            "$ref": "#/components/schemas/Handoff"
+          }
+        }
+      },
+      "Handoff": {
+        "type": "object",
+        "description": "How the render was started. `activation` is the platform API, `web` is a second call to this function's own public endpoint, `inline` means both refused and the caller waited for the render.",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "activation",
+              "web",
+              "inline"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why each route refused the render. Present only when the mode is `inline`.",
+            "example": "no platform credentials on board; no public endpoint configured"
           }
         }
       },
@@ -368,6 +393,9 @@
             "format": "uri",
             "description": "Where the stored postcard can be read, if the configured acl allows it.",
             "example": "https://postcards.mypreflight.io/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
+          },
+          "handoff": {
+            "$ref": "#/components/schemas/Handoff"
           }
         }
       },

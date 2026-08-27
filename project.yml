@@ -13,6 +13,7 @@ packages:
       SPACES_PREFIX: 'postcards/'
       SPACES_PUBLIC_BASE_URL: 'https://postcards.mypreflight.io'
       SPACES_ACL: 'public-read'
+      POSTCARD_PUBLIC_URL: 'https://flight-tracking-api-wtbip.ondigitalocean.app/postcard-generator/postcard/city'
     functions:
       - name: city
         runtime: 'nodejs:24'

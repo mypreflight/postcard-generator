@@ -14,9 +14,6 @@ export type RequestParams = {
   country?: string;
   continent?: string;
   uuid?: string;
-  size?: string;
-  quality?: string;
-  format?: string;
 };
 
 export type Defaults = {
@@ -193,9 +190,9 @@ export function parseRequest(params: RequestParams, defaults: Defaults): Postcar
     country: parseCountry(params.country),
     continent: parseContinent(params.continent),
     uuid: parseUuid(params.uuid),
-    size: parseSize(params.size, defaults.size),
-    quality: parseQuality(params.quality, defaults.quality),
-    format: parseFormat(params.format, defaults.format),
+    size: defaults.size,
+    quality: defaults.quality,
+    format: defaults.format,
     compression: defaults.compression,
   };
 }
