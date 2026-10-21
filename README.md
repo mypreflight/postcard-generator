@@ -1,6 +1,6 @@
 <div align="center">
 
-# postcard-generator
+[![postcard-generator][banner]][homepage]
 
 The city artwork function of the [**MyPreflight**][homepage] platform. Draws a bespoke, flat-vector travel
 poster for any city on demand, as a component of the platform's App Platform app.
@@ -313,6 +313,7 @@ paid for it.
 [github-url]: https://github.com/oskarbarcz
 [web-badge]: https://img.shields.io/badge/barcz.me-4A5568?style=for-the-badge&logo=googlechrome&logoColor=white
 [web-url]: https://barcz.me
+[banner]: .github/image/banner.png
 [homepage]: https://mypreflight.io
 [openai-images]: https://platform.openai.com/docs/guides/image-generation
 [repo-api]: https://github.com/oskarbarcz/flight-tracker-api
