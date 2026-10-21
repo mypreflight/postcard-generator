@@ -4,12 +4,14 @@ The postcard function: draws one travel-poster postcard per city with the OpenAI
 
 Last reviewed: 2026-10-20
 
-This repo is part of MyPreflight. Product decisions, standards and architecture live in the knowledge base. Read it by URL before working here:
+This repo is part of MyPreflight. The knowledge base lives in the product repo, [mypreflight/product](https://github.com/mypreflight/product). It is the primary source of truth for product decisions, standards and architecture. Read it by URL before working here:
 
 - Start: https://raw.githubusercontent.com/mypreflight/product/main/CLAUDE.md
 - Standards: https://raw.githubusercontent.com/mypreflight/product/main/technology/backend/standards.md
 - Architecture: https://raw.githubusercontent.com/mypreflight/product/main/technology/backend/architecture.md
 - Brand: https://raw.githubusercontent.com/mypreflight/product/main/product/brand/identity.md
+
+If this file or the code contradicts the knowledge base, the knowledge base takes precedence. Flag the conflict; don't silently change either side.
 
 ## Repo-specific notes
 
