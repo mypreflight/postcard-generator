@@ -39,6 +39,11 @@ export type StoredObject = {
   url: string;
 };
 
+export interface PostcardStore {
+  locate(name: string): StoredObject;
+  store(name: string, body: Buffer, contentType: string): Promise<StoredObject>;
+}
+
 export type AcceptedPostcard = {
   status: "accepted";
   city: string;
