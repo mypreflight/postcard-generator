@@ -13,6 +13,24 @@ export class BadRequestError extends ProviderError {
   readonly code = "BAD_REQUEST";
 }
 
+export class UnauthorizedError extends ProviderError {
+  readonly status = 401;
+  readonly code = "UNAUTHORIZED";
+
+  constructor() {
+    super("The request did not carry the function secret.");
+  }
+}
+
+export class RouteNotFoundError extends ProviderError {
+  readonly status = 404;
+  readonly code = "NOT_FOUND";
+
+  constructor(path: string) {
+    super(`Nothing is served at ${path}.`);
+  }
+}
+
 export class PostcardRejectedError extends ProviderError {
   readonly status = 422;
   readonly code = "POSTCARD_REJECTED";

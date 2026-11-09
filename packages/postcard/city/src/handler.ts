@@ -3,9 +3,8 @@ import { ProviderError } from "./errors";
 import { describeError, Logger, stackOf } from "./logger";
 import { buildPrompt } from "./prompt";
 import { type Defaults, parseRequest, type RequestParams } from "./request";
-import type { Handoff, Scheduler } from "./scheduler";
-import type { SpacesClient } from "./spaces";
-import { CONTENT_TYPES, EXTENSIONS, type Postcard, type PostcardRequest } from "./types";
+import type { Handoff, RenderScheduler } from "./scheduler";
+import { CONTENT_TYPES, EXTENSIONS, type Postcard, type PostcardRequest, type PostcardStore } from "./types";
 
 export type HandlerParams = RequestParams & { background?: boolean | string };
 
@@ -37,12 +36,12 @@ function objectName(request: PostcardRequest): string {
   return `${request.uuid}.${EXTENSIONS[request.format]}`;
 }
 
-async function drawAndStore(client: OpenAiClient, spaces: SpacesClient, request: PostcardRequest): Promise<Postcard> {
+async function drawAndStore(client: OpenAiClient, store: PostcardStore, request: PostcardRequest): Promise<Postcard> {
   const prompt = buildPrompt(request.city, request.country, request.continent);
   const image = await client.draw(request, prompt);
   const contentType = CONTENT_TYPES[request.format];
 
-  const stored = await spaces.store(objectName(request), Buffer.from(image.base64, "base64"), contentType);
+  const stored = await store.store(objectName(request), Buffer.from(image.base64, "base64"), contentType);
 
   return {
     city: request.city,
@@ -61,8 +60,8 @@ async function drawAndStore(client: OpenAiClient, spaces: SpacesClient, request:
   };
 }
 
-async function accept(scheduler: Scheduler, spaces: SpacesClient, request: PostcardRequest): Promise<Acceptance> {
-  const { key, url } = spaces.locate(objectName(request));
+async function accept(scheduler: RenderScheduler, store: PostcardStore, request: PostcardRequest): Promise<Acceptance> {
+  const { key, url } = store.locate(objectName(request));
 
   let handoff: Handoff;
 
@@ -109,10 +108,10 @@ async function accept(scheduler: Scheduler, spaces: SpacesClient, request: Postc
 
 export async function handleRequest(
   client: OpenAiClient,
-  spaces: SpacesClient,
+  store: PostcardStore,
   params: HandlerParams,
   defaults: Defaults,
-  scheduler: Scheduler | null = null,
+  scheduler: RenderScheduler | null = null,
 ): Promise<HandlerResponse> {
   const startedAt = Date.now();
 
@@ -122,7 +121,7 @@ export async function handleRequest(
     let refused: string | null = null;
 
     if (scheduler && !isBackgroundActivation(params)) {
-      const acceptance = await accept(scheduler, spaces, request);
+      const acceptance = await accept(scheduler, store, request);
 
       if ("accepted" in acceptance) {
         return acceptance.accepted;
@@ -131,7 +130,7 @@ export async function handleRequest(
       refused = acceptance.refused;
     }
 
-    const postcard = await drawAndStore(client, spaces, request);
+    const postcard = await drawAndStore(client, store, request);
 
     logger.log(`Served ${describeRequest(params)} in ${Date.now() - startedAt}ms.`);
 

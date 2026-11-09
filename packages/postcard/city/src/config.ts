@@ -1,7 +1,10 @@
 import { MisconfiguredError } from "./errors";
+import type { LambdaInvokerOptions } from "./invoker";
 import type { Defaults } from "./request";
 import { parseFormat, parseQuality, parseSize } from "./request";
+import type { S3ClientOptions } from "./s3";
 import type { PlatformCredentials, SchedulerOptions, WebEndpoint } from "./scheduler";
+import type { Credentials } from "./sigv4";
 import type { SpacesClientOptions } from "./spaces";
 
 const FALLBACK_SIZE = "1152x1536";
@@ -54,8 +57,8 @@ function required(name: string): string {
 }
 
 /** Leaves the prefix either empty or ending in a single slash, so keys never gain a stray one. */
-function readPrefix(): string {
-  const raw = (process.env.SPACES_PREFIX ?? FALLBACK_PREFIX).trim().replace(/^\/+/, "");
+function readPrefix(name: string): string {
+  const raw = (process.env[name] ?? FALLBACK_PREFIX).trim().replace(/^\/+/, "");
 
   if (!raw) {
     return "";
@@ -75,8 +78,61 @@ export function readSpacesOptions(): SpacesClientOptions {
     region,
     accessKey: required("SPACES_KEY"),
     secretKey: required("SPACES_SECRET"),
-    prefix: readPrefix(),
+    prefix: readPrefix("SPACES_PREFIX"),
     acl: (process.env.SPACES_ACL ?? "").trim() || FALLBACK_ACL,
+  };
+}
+
+export function readAwsCredentials(): Credentials {
+  const accessKeyId = (process.env.AWS_ACCESS_KEY_ID ?? "").trim();
+  const secretAccessKey = (process.env.AWS_SECRET_ACCESS_KEY ?? "").trim();
+  const sessionToken = (process.env.AWS_SESSION_TOKEN ?? "").trim();
+
+  if (!accessKeyId || !secretAccessKey) {
+    throw new MisconfiguredError(
+      "AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set for the function to reach AWS.",
+    );
+  }
+
+  return sessionToken ? { accessKeyId, secretAccessKey, sessionToken } : { accessKeyId, secretAccessKey };
+}
+
+function readAwsRegion(): string {
+  return (process.env.AWS_REGION ?? "").trim();
+}
+
+export function readS3Options(): S3ClientOptions {
+  const bucket = required("S3_BUCKET");
+  const region = (process.env.S3_REGION ?? "").trim() || readAwsRegion();
+
+  if (!region) {
+    throw new MisconfiguredError("S3_REGION or AWS_REGION must be set for the postcard to be stored.");
+  }
+
+  const endpoint = (process.env.S3_ENDPOINT ?? "").trim() || `https://${bucket}.s3.${region}.amazonaws.com`;
+
+  return {
+    endpoint,
+    publicBaseUrl: (process.env.S3_PUBLIC_BASE_URL ?? "").trim() || endpoint,
+    region,
+    prefix: readPrefix("S3_PREFIX"),
+    credentials: readAwsCredentials,
+  };
+}
+
+export function readLambdaInvokerOptions(): LambdaInvokerOptions | null {
+  const functionName = (process.env.AWS_LAMBDA_FUNCTION_NAME ?? "").trim();
+  const region = readAwsRegion();
+
+  if (!functionName || !region) {
+    return null;
+  }
+
+  return {
+    endpoint: (process.env.LAMBDA_ENDPOINT ?? "").trim() || `https://lambda.${region}.amazonaws.com`,
+    region,
+    functionName,
+    credentials: readAwsCredentials,
   };
 }
 

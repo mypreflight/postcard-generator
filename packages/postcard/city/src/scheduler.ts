@@ -19,6 +19,10 @@ export type SchedulerOptions = {
 
 export type Handoff = "activation" | "web";
 
+export interface RenderScheduler {
+  schedule(params: Record<string, unknown>): Promise<Handoff>;
+}
+
 export class HandoffRefusedError extends Error {
   constructor(refusals: string[]) {
     super(refusals.join("; "));
@@ -36,7 +40,7 @@ function wasAbandoned(error: unknown): boolean {
   return name === "TimeoutError" || name === "AbortError";
 }
 
-export class Scheduler {
+export class Scheduler implements RenderScheduler {
   private readonly logger = new Logger(Scheduler.name);
 
   constructor(private readonly options: SchedulerOptions) {}
