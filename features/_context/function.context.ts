@@ -1,0 +1,131 @@
+import { After, type DataTable, Given, Then, When } from "@cucumber/cucumber";
+import expect from "expect";
+import { handler, resetClient } from "../../src/lambda";
+import { deepCompare } from "../_helper/deep-compare";
+
+let statusCode: number;
+let body: unknown;
+
+/** The uuid a scenario gets when it is not the uuid itself that is under test. */
+export const SOME_UUID = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
+
+/** The place a scenario gets when it is not the place itself that is under test. */
+export const SOME_COUNTRY = "Germany";
+
+export const SOME_CONTINENT = "Europe";
+
+type Params = {
+  city?: string;
+  country?: string;
+  continent?: string;
+  uuid?: string;
+  size?: string;
+  quality?: string;
+  format?: string;
+  prompt?: string;
+};
+
+const configuredFormat = process.env.POSTCARD_FORMAT;
+
+async function invoke(params: Params, authorization = `Bearer ${process.env.POSTCARD_FUNCTION_SECRET ?? ""}`) {
+  const result = await handler({
+    rawPath: "/city",
+    headers: { authorization },
+    queryStringParameters: params,
+    requestContext: { http: { method: "GET" } },
+  });
+
+  statusCode = result.statusCode;
+  body = JSON.parse(result.body);
+}
+
+const somewhere = { country: SOME_COUNTRY, continent: SOME_CONTINENT };
+
+Given("the function is configured to store {string}", (format: string) => {
+  process.env.POSTCARD_FORMAT = format;
+  resetClient();
+});
+
+After(() => {
+  if (configuredFormat === undefined) {
+    delete process.env.POSTCARD_FORMAT;
+
+    return;
+  }
+
+  process.env.POSTCARD_FORMAT = configuredFormat;
+});
+
+When("I ask for a postcard of {string}", async (city: string) => {
+  await invoke({ city, ...somewhere, uuid: SOME_UUID });
+});
+
+When("I ask for a postcard of {string} as {string}", async (city: string, uuid: string) => {
+  await invoke({ city, ...somewhere, uuid });
+});
+
+When(
+  "I ask for a postcard of {string} in {string} on {string}",
+  async (city: string, country: string, continent: string) => {
+    await invoke({ city, country, continent, uuid: SOME_UUID });
+  },
+);
+
+When("I ask for a postcard with:", async (table: DataTable) => {
+  await invoke({ ...somewhere, uuid: SOME_UUID, ...(table.rowsHash() as Params) });
+});
+
+When("I ask for a postcard without a city", async () => {
+  await invoke({ ...somewhere, uuid: SOME_UUID });
+});
+
+When("I ask for a postcard without a country", async () => {
+  await invoke({ city: "Munich", continent: SOME_CONTINENT, uuid: SOME_UUID });
+});
+
+When("I ask for a postcard without a continent", async () => {
+  await invoke({ city: "Munich", country: SOME_COUNTRY, uuid: SOME_UUID });
+});
+
+When("I ask for a postcard without a uuid", async () => {
+  await invoke({ city: "Munich", ...somewhere });
+});
+
+When("I ask for a postcard of {string} without the function secret", async (city: string) => {
+  await invoke({ city, ...somewhere, uuid: SOME_UUID }, "");
+});
+
+Then("the response status should be {int}", (expected: number) => {
+  expect(statusCode).toBe(expected);
+});
+
+Then("the response body should contain:", (docString: string) => {
+  deepCompare(body, JSON.parse(docString));
+});
+
+Then("the response body should have the property {string}", (property: string) => {
+  expect(body).toHaveProperty(property);
+});
+
+Then("the response body should not have the property {string}", (property: string) => {
+  expect(body).not.toHaveProperty(property);
+});
+
+Then("the response property {string} should be {string}", (property: string, value: string) => {
+  expect(body).toHaveProperty(property, value);
+});
+
+Then("the response property {string} should contain {string}", (property: string, needle: string) => {
+  const actual = (body as Record<string, unknown>)[property];
+
+  expect(typeof actual).toBe("string");
+  expect(actual as string).toContain(needle);
+});
+
+Then("the response error code should be {string}", (code: string) => {
+  expect(body).toHaveProperty("error.code", code);
+});
+
+Then("I dump response", () => {
+  console.log(JSON.stringify(body, null, 2));
+});

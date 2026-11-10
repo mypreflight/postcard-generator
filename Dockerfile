@@ -8,11 +8,12 @@ COPY --chown=node:node . .
 ENTRYPOINT ["/app/docker/dev/entrypoint"]
 
 FROM alpine-node-base AS build
-WORKDIR /app/packages/postcard/city
-COPY packages/postcard/city/package*.json ./
+WORKDIR /app
+COPY package*.json ./
 RUN npm ci --no-audit --no-fund
-COPY packages/postcard/city ./
+COPY tsconfig.json ./
+COPY src ./src
 RUN npm run bundle
 
 FROM scratch AS export
-COPY --from=build /app/packages/postcard/city/dist/lambda.js ./
+COPY --from=build /app/dist/lambda.js ./

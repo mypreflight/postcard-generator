@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyPreflight postcard generator",
-    "description": "A DigitalOcean Function that draws a minimalist flat-vector travel poster for a city with the OpenAI image API and stores it in DigitalOcean Spaces under a uuid the caller chooses.\n\nDeployed as a functions component of the `mypreflight` App Platform app. Every request must carry the `X-Require-Whisk-Auth` header declared as `webSecure` in project.yml; the platform rejects the request before the function runs otherwise.\n\n**The function answers `202` and draws in the background.** A render takes tens of seconds and sometimes minutes, far longer than the platform will hold a synchronous web invocation open, so the request is validated, handed to a second activation and acknowledged at once. The answer carries the `key` and `url` the art will appear at \u2014 the caller chose the uuid, so the location is known before the render starts \u2014 and the caller polls the bucket for it. Nothing but a `400` tells the caller anything is wrong with the request itself; a render that fails later is only visible as art that never appears.\n\n`200` with a full result is the exception, not the rule: it is answered when the function could not hand the render off and drew it while the caller waited. The image never travels in either answer, because a function result may not exceed 1 MB.",
-    "version": "1.0.0",
+    "description": "A function that draws a minimalist flat-vector travel poster for a city with the OpenAI image API and stores it in S3 under a uuid the caller chooses, served through CloudFront.\n\nDeployed as an AWS Lambda function behind a public Function URL. Every request must carry the function secret as `Authorization: Bearer <secret>`; the function refuses anything else with `401` before it reads the request.\n\n**The function answers `202` and draws in the background.** A render takes tens of seconds and sometimes minutes, far longer than a caller should hold a synchronous call open, so the request is validated, handed to an asynchronous invocation of the same function and acknowledged at once. The answer carries the `key` and `url` the art will appear at \u2014 the caller chose the uuid, so the location is known before the render starts \u2014 and the caller polls the bucket for it. Nothing but a `400` tells the caller anything is wrong with the request itself; a render that fails later is only visible as art that never appears.\n\n`200` with a full result is the exception, not the rule: it is answered when the function could not hand the render off and drew it while the caller waited. The image never travels in either answer, because a Lambda response may not exceed 6 MB and a poster can be larger.",
+    "version": "2.0.0",
     "license": {
       "name": "Unlicense",
       "url": "https://opensource.org/licenses/Unlicense"
@@ -11,8 +11,14 @@
   },
   "servers": [
     {
-      "url": "https://<app-host>/postcard-generator",
-      "description": "App Platform ingress route"
+      "url": "https://{urlId}.lambda-url.eu-central-1.on.aws",
+      "description": "AWS Lambda Function URL, published at the SSM parameter `/mypreflight/postcard-generator/url`",
+      "variables": {
+        "urlId": {
+          "default": "url-id",
+          "description": "The id in the Function URL."
+        }
+      }
     },
     {
       "url": "http://localhost:3001",
@@ -20,10 +26,10 @@
     }
   ],
   "paths": {
-    "/postcard/city": {
+    "/city": {
       "get": {
         "summary": "Draw a travel poster for a city",
-        "description": "Renders the city with the poster brief, stores the image in Spaces as `<prefix><uuid>.<ext>` and returns the key and url it landed under together with the prompt and render settings. The four parameters below are the only ones the function reads: what is drawn and how — size, quality, format, compression and the prompt itself — is the function's own configuration, so a caller names a place and an object and has no say over the render or the spend. Anything else that arrives is ignored. Identical render requests are served from an in-memory cache for a day, for as long as the function instance stays warm, so a second uuid for the same city reuses the drawing and is only stored again.",
+        "description": "Renders the city with the poster brief, stores the image in S3 as `<prefix><uuid>.<ext>` and returns the key and url it landed under together with the prompt and render settings. The four parameters below are the only ones the function reads: what is drawn and how — size, quality, format, compression and the prompt itself — is the function's own configuration, so a caller names a place and an object and has no say over the render or the spend. Anything else that arrives is ignored. Identical render requests are served from an in-memory cache for a day, for as long as the function instance stays warm, so a second uuid for the same city reuses the drawing and is only stored again.",
         "operationId": "generatePostcard",
         "parameters": [
           {
@@ -55,15 +61,7 @@
             "description": "Continent the city is on, in English. Read case-insensitively. Grounds the terrain, vegetation, climate and quality of light; like the country it is never drawn as text or as a symbol.",
             "schema": {
               "type": "string",
-              "enum": [
-                "Africa",
-                "Antarctica",
-                "Asia",
-                "Europe",
-                "North America",
-                "Oceania",
-                "South America"
-              ]
+              "enum": ["Africa", "Antarctica", "Asia", "Europe", "North America", "Oceania", "South America"]
             },
             "example": "Europe"
           },
@@ -97,12 +95,7 @@
             "description": "Render quality. Defaults to POSTCARD_QUALITY.",
             "schema": {
               "type": "string",
-              "enum": [
-                "auto",
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["auto", "low", "medium", "high"]
             }
           },
           {
@@ -112,16 +105,13 @@
             "description": "Encoding of the stored image, which also decides the object extension: jpeg is stored as `.jpg`, png as `.png`. Defaults to POSTCARD_FORMAT. `webp` is deliberately absent: gpt-image-2 accepts it and answers with png bytes anyway.",
             "schema": {
               "type": "string",
-              "enum": [
-                "jpeg",
-                "png"
-              ]
+              "enum": ["jpeg", "png"]
             }
           }
         ],
         "responses": {
           "200": {
-            "description": "The render could not be handed off, so it was drawn while the caller waited and is stored. The `handoff` field carries the reason every route refused it, because the function's own logs are not retrievable in an App Platform namespace.",
+            "description": "The render could not be handed off, so it was drawn while the caller waited and is stored. On Lambda the `handoff` field carries the reason the invocation was refused; the development server has no function to invoke and answers without it.",
             "content": {
               "application/json": {
                 "schema": {
@@ -131,7 +121,7 @@
             }
           },
           "202": {
-            "description": "The request was validated and the render is running in the background, either as a platform activation or as a second web call to this same function; the `handoff` field says which. The normal answer. The body carries where the art will appear; poll that url until it answers. A `202` whose body carries an `activationId` and no `key` comes from the platform rather than the function, and means the render is running but was not acknowledged \u2014 the art still appears under the uuid that was asked for.",
+            "description": "The request was validated and the render is running in an asynchronous invocation of this same function, as `handoff` says. The normal answer. The body carries where the art will appear; poll that url until it answers.",
             "content": {
               "application/json": {
                 "schema": {
@@ -142,6 +132,26 @@
           },
           "400": {
             "description": "The arguments are malformed. No image was drawn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The `Authorization` header is missing, is not a bearer token, or carries the wrong secret. Answered by the function with `UNAUTHORIZED` and `WWW-Authenticate: Bearer` before it reads the request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nothing is served at the requested path. Only `/city` exists.",
             "content": {
               "application/json": {
                 "schema": {
@@ -196,33 +206,21 @@
   },
   "components": {
     "securitySchemes": {
-      "functionSecret": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Require-Whisk-Auth",
-        "description": "The shared secret declared as `webSecure` in project.yml."
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The shared function secret, generated by the infrastructure stack and published at the SSM parameter `/mypreflight/postcard-generator/secret`."
       }
     },
     "schemas": {
       "AcceptedPostcard": {
         "type": "object",
-        "description": "The request was validated and handed to a background activation. The art is not stored yet.",
-        "required": [
-          "status",
-          "city",
-          "uuid",
-          "size",
-          "quality",
-          "format",
-          "key",
-          "url"
-        ],
+        "description": "The request was validated and handed to a background invocation. The art is not stored yet.",
+        "required": ["status", "city", "uuid", "size", "quality", "format", "key", "url"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "accepted"
-            ],
+            "enum": ["accepted"],
             "description": "Always `accepted`, so this answer is never mistaken for a stored postcard."
           },
           "city": {
@@ -252,19 +250,11 @@
           },
           "quality": {
             "type": "string",
-            "enum": [
-              "auto",
-              "low",
-              "medium",
-              "high"
-            ]
+            "enum": ["auto", "low", "medium", "high"]
           },
           "format": {
             "type": "string",
-            "enum": [
-              "jpeg",
-              "png"
-            ]
+            "enum": ["jpeg", "png"]
           },
           "key": {
             "type": "string",
@@ -284,23 +274,17 @@
       },
       "Handoff": {
         "type": "object",
-        "description": "How the render was started. `activation` is the platform API, `web` is a second call to this function's own public endpoint, `inline` means both refused and the caller waited for the render.",
-        "required": [
-          "mode"
-        ],
+        "description": "How the render was started. `invocation` is an asynchronous invocation of this same function through the Lambda Invoke API, `inline` means Lambda refused it and the caller waited for the render.",
+        "required": ["mode"],
         "properties": {
           "mode": {
             "type": "string",
-            "enum": [
-              "activation",
-              "web",
-              "inline"
-            ]
+            "enum": ["invocation", "inline"]
           },
           "reason": {
             "type": "string",
-            "description": "Why each route refused the render. Present only when the mode is `inline`.",
-            "example": "no platform credentials on board; no public endpoint configured"
+            "description": "Why Lambda refused the invocation. Present only when the mode is `inline`.",
+            "example": "https://lambda.eu-central-1.amazonaws.com/2015-03-31/functions/postcard-generator/invocations answered 429 TooManyRequestsException"
           }
         }
       },
@@ -352,27 +336,16 @@
           },
           "quality": {
             "type": "string",
-            "enum": [
-              "auto",
-              "low",
-              "medium",
-              "high"
-            ]
+            "enum": ["auto", "low", "medium", "high"]
           },
           "format": {
             "type": "string",
-            "enum": [
-              "jpeg",
-              "png"
-            ]
+            "enum": ["jpeg", "png"]
           },
           "contentType": {
             "type": "string",
             "description": "Media type to serve the decoded image as.",
-            "enum": [
-              "image/jpeg",
-              "image/png"
-            ]
+            "enum": ["image/jpeg", "image/png"]
           },
           "bytes": {
             "type": "integer",
@@ -391,7 +364,7 @@
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Where the stored postcard can be read, if the configured acl allows it.",
+            "description": "Where the stored postcard can be read, through the public base url.",
             "example": "https://postcards.mypreflight.io/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg"
           },
           "handoff": {
@@ -401,27 +374,23 @@
       },
       "Error": {
         "type": "object",
-        "required": [
-          "error"
-        ],
+        "required": ["error"],
         "properties": {
           "error": {
             "type": "object",
-            "required": [
-              "code",
-              "message",
-              "status"
-            ],
+            "required": ["code", "message", "status"],
             "properties": {
               "code": {
                 "type": "string",
                 "enum": [
                   "BAD_REQUEST",
+                  "UNAUTHORIZED",
+                  "NOT_FOUND",
                   "POSTCARD_REJECTED",
                   "OPENAI_RATE_LIMITED",
                   "OPENAI_UNAVAILABLE",
                   "POSTCARD_UNREADABLE",
-                  "SPACES_UNAVAILABLE",
+                  "STORAGE_UNAVAILABLE",
                   "MISCONFIGURED",
                   "INTERNAL_ERROR"
                 ]
@@ -440,7 +409,7 @@
   },
   "security": [
     {
-      "functionSecret": []
+      "bearerAuth": []
     }
   ]
 }
