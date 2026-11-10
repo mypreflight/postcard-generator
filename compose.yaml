@@ -1,14 +1,13 @@
 services:
-  city:
+  app:
     build:
       context: .
       target: development
-    working_dir: /app/packages/postcard/city
+    working_dir: /app
     env_file:
       - .env
     volumes:
       - .:/app
-      - ./node_modules:/app/packages/postcard/city/node_modules
     ports:
       - '3001:3000'
     healthcheck:

@@ -3,7 +3,7 @@
 [![postcard-generator][banner]][homepage]
 
 The city artwork function of the [**MyPreflight**][homepage] platform. Draws a bespoke, flat-vector travel
-poster for any city on demand, as a component of the platform's App Platform app.
+poster for any city on demand, as an AWS Lambda function.
 
 </div>
 
@@ -20,7 +20,7 @@ flight:
 - composes the whole brief — landmark, figures, palette, typography — from one city name, so a destination never needs
   a hand-made asset,
 - sets the city in uppercase as the only lettering, in English,
-- stores the poster in DigitalOcean Spaces under a uuid the caller chooses, and answers with where it landed,
+- stores the poster in S3 under a uuid the caller chooses, served through CloudFront, and answers with where it landed,
 - refuses malformed arguments before a single image is paid for,
 - caches identical requests for a day, for as long as the instance stays warm.
 
@@ -46,8 +46,8 @@ companion in [flight-tracker-transponder-app][repo-transponder] and the seat map
 [![Cucumber][cucumber-badge]][cucumber-url]
 [![Docker][docker-badge]][docker-url]
 
-No runtime dependencies at all — the function is the standard library plus compiled TypeScript, which keeps the
-deployed artifact small and the cold start immediate.
+No runtime dependencies at all — the function is the standard library plus TypeScript bundled by esbuild into one file,
+which keeps the deployed artifact small and the cold start immediate.
 
 ## Getting started
 
@@ -77,48 +77,49 @@ This app uses docker-based virtualization to run. To set up the project, follow 
    Packages will be installed automatically and the service starts in watch mode.
 
 4. Your project should be up and running. `docker compose` also starts an `openai-mock` container, so the function
-   answers a tiny stand-in image without spending anything:
+   answers a tiny stand-in image without spending anything. The dev server wraps the same handler Lambda calls, so it
+   wants the `POSTCARD_FUNCTION_SECRET` from your `.env` as a bearer token:
 
    ```shell
-   curl "http://localhost:3001/?city=Munich&uuid=$(uuidgen | tr 'A-Z' 'a-z')"
+   curl -H "Authorization: Bearer $POSTCARD_FUNCTION_SECRET" \
+     "http://localhost:3001/city?city=Munich&country=Germany&continent=Europe&uuid=$(uuidgen | tr 'A-Z' 'a-z')"
    ```
 
-   `SPACES_ENDPOINT` points at the same mock, so nothing is uploaded either. Point `OPENAI_API_HOST` at
-   `https://api.openai.com` with a real `OPENAI_API_KEY`, and `SPACES_ENDPOINT` at the real bucket with a real
-   `SPACES_KEY` and `SPACES_SECRET`, to draw and store for real.
+   `S3_ENDPOINT` points at the same mock, so nothing is uploaded either. Point `OPENAI_API_HOST` at
+   `https://api.openai.com` with a real `OPENAI_API_KEY`, and unset `S3_ENDPOINT` with AWS credentials allowed to write
+   the bucket, to draw and store for real.
 
 ### On-demand by design
 
-This is a functions component of the `mypreflight` App Platform app — the same app the backend runs in, deployed from
-this repository rather than as a separate serverless project. It scales to zero, costs nothing while nobody is asking
-for a city, and starts on the first request, which fits a render the backend stores permanently and therefore asks for
-once per destination.
+The function runs on AWS Lambda behind a Function URL. It scales to zero, costs nothing while nobody is asking for a
+city, and starts on the first request, which fits a render the backend stores permanently and therefore asks for once
+per destination.
 
 ```shell
-curl -H "X-Require-Whisk-Auth: $SECRET" \
-  "https://<app-host>/postcard-generator/postcard/city?city=Munich&uuid=$UUID"
+URL=$(aws ssm get-parameter --name /mypreflight/postcard-generator/url --query Parameter.Value --output text)
+SECRET=$(aws ssm get-parameter --name /mypreflight/postcard-generator/secret --with-decryption \
+  --query Parameter.Value --output text)
+curl -H "Authorization: Bearer $SECRET" \
+  "$URL/city?city=Munich&country=Germany&continent=Europe&uuid=$UUID"
 ```
 
-Functions reach the network through the app's public ingress and cannot be placed on a private one — they support
-neither VPCs nor App Platform internal routing. The endpoint is therefore guarded by a shared secret, declared as
-`webSecure` in `project.yml`. That secret is doing more than hiding an implementation detail here: every unguarded call
-would spend money at OpenAI.
+The Function URL is public, with auth type `NONE`, so the function guards it with a shared secret: every request must
+carry it as `Authorization: Bearer <secret>`, compared in constant time before anything else runs. That secret is doing
+more than hiding an implementation detail here: every unguarded call would spend money at OpenAI.
 
-The function is a self-contained package under `packages/postcard/city`, with its own `package.json`, build and
-dependencies. `src/function.ts` is the entry point DigitalOcean calls, and `scripts/dev-server.ts` beside it wraps that
-entry point in a throwaway HTTP server so `docker compose up` gives you something to curl; it is never deployed.
+The repository is one package. `src/lambda.ts` is the entry point Lambda calls (`lambda.handler`), bundled by esbuild
+into a single `dist/lambda.js`, and `scripts/dev-server.ts` wraps that same handler in a throwaway HTTP server so
+`docker compose up` gives you something to curl; it is never deployed.
 
-Its timeout is raised to five minutes and its memory to 512 MB in `project.yml`, because a high-quality render
-regularly takes tens of seconds and occasionally minutes — far past the platform default.
+Its timeout is five minutes and its memory 512 MB, set in `infra/lambda.tf`, because a high-quality render regularly
+takes tens of seconds and occasionally minutes.
 
 ### API documentation
 
-The contract is `openapi.json` in the repository root — `GET /postcard/city`, requiring the
-`X-Require-Whisk-Auth` header. It is the source of truth: `flight-tracker-api` generates its client types from it
-rather than restating them.
+The contract is `openapi.json` in the repository root — `GET /city`, requiring `Authorization: Bearer <secret>`. It is
+the source of truth: `flight-tracker-api` vendors it and mirrors it in hand-written types.
 
-The function takes arguments, not paths — as query parameters over HTTP, or as the `args` object when invoked through
-the DigitalOcean API.
+The function takes query parameters:
 
 | Argument    | Default      | Meaning                                                                       |
 | ----------- | ------------ | ----------------------------------------------------------------------------- |
@@ -150,51 +151,49 @@ output, an echo of the configuration above, so a render can be attributed or rep
   "prompt": "TARGET_CITY = \"Munich\" Full-bleed vertical 3:4 minimalist flat-vector travel art poster …",
   "key": "postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg",
   "url": "https://postcards.mypreflight.io/postcards/3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b.jpg",
-  "handoff": { "mode": "inline", "reason": "no platform credentials on board" }
+  "handoff": {
+    "mode": "inline",
+    "reason": "https://lambda.eu-central-1.amazonaws.com/2015-03-31/functions/postcard-generator/invocations answered 429 TooManyRequestsException"
+  }
 }
 ```
 
-Errors answer `{ "error": { "code", "message", "status" } }` with a matching status: `400` bad arguments, `422` a
+Errors answer `{ "error": { "code", "message", "status" } }` with a matching status: `400` bad arguments, `401` a
+missing or wrong bearer token, `404` any path but `/city`, `422` a
 prompt OpenAI refused to draw, `429` OpenAI rate limiting, `502` OpenAI unreachable, unreadable or a bucket that
 refused the upload, `500` missing configuration or anything else. A refused prompt and an outage are deliberately
 different statuses — retrying the first will never help.
 
 ### Why the postcard is stored, not returned
 
-Two platform limits decide the shape of this function, and neither is negotiable.
+Two limits decide the shape of this function.
 
-**A function result may not exceed [1 MB][docs-limits].** A `gpt-image-2` poster at the default 3:4 size is larger than
-that before base64 adds a third on top, so the image cannot travel in the response at all. It goes to Spaces instead,
-and the result carries only the `key` and `url` it landed under.
+**A Lambda response may not exceed [6 MB][docs-limits].** A `gpt-image-2` PNG poster at the default 3:4 size is several
+megabytes before base64 adds a third on top, so the image cannot reliably travel in the response. It goes to S3
+instead, and the result carries only the `key` and `url` it landed under.
 
-**A synchronous web invocation is cut off after about 40 seconds.** The `timeout` raised to five minutes in
-`project.yml` governs how long the function may *run*, not how long the caller may wait. A render at the default size
-and quality regularly takes longer than 40 seconds, so waiting for one was never going to work.
+**A Function URL call is synchronous.** The caller waits for the whole invocation, up to the function's five-minute
+timeout, while the backend gives up after 30 seconds. A render at the default size and quality regularly takes longer
+than that, so making the caller wait for one was never going to work.
 
-**So the function does not make the caller wait.** It validates the arguments, hands the render to a second,
-non-blocking activation of itself and answers `202` at once with the `key` and `url` the art will appear under. Only a
-malformed request is answered synchronously, as a `400`, because that is the one failure the caller can act on.
+**So the function does not make the caller wait.** It validates the arguments, hands the render to an asynchronous
+invocation of itself and answers `202` at once with the `key` and `url` the art will appear under. Only a malformed
+request is answered synchronously, as a `400`, because that is the one failure the caller can act on.
 
-**The hand-off has two routes, tried in order.** The first is the platform API: the `__OW_API_HOST`, `__OW_API_KEY`,
-`__OW_NAMESPACE` and `__OW_ACTION_NAME` an OpenWhisk action is normally given, spent on a single authenticated `POST`
-to `actions/<package>/<action>?blocking=false`. An App Platform functions component does not always get those
-variables, and without them the first route is not even attempted.
+**The hand-off is the Lambda Invoke API.** The function invokes its own name with `X-Amz-Invocation-Type: Event`,
+signed with SigV4 from the role's temporary credentials, and the role may invoke this function and nothing else. Lambda
+queues the event and answers `202`. The queued invocation receives `{ "kind": "draw", "params": … }`, which only an
+IAM-signed invoke can deliver, so it skips the bearer check and draws without handing off again. The event invoke
+configuration allows no retries, so a render that fails is never paid for twice.
 
-The second route needs nothing from the platform: the function calls **its own public endpoint**, `POSTCARD_PUBLIC_URL`,
-with the same shared secret the original caller used. A web invocation answers only when the render is finished, so
-the connection is deliberately abandoned after two seconds — the activation it started runs on regardless, which is
-the whole point of the 40-second cut-off being the caller's problem and not the render's. Either route reaches the
-same code, told it is the background activation by a `background: true` argument the web caller never sets.
+**How the render was handed off is in the answer.** Every answer from Lambda carries `handoff`: `{ "mode":
+"invocation" }` on a `202`, and `{ "mode": "inline", "reason": "…" }` on a `200` when Lambda refused the invocation,
+where the reason is the refusal. A caller that sees `inline` is looking at the one case that makes it wait, with the
+explanation attached. The logs are in CloudWatch, under `/aws/lambda/postcard-generator`.
 
-**Which route ran is in the answer, not in the logs.** App Platform functions components run in a namespace `doctl`
-does not surface and whose activations are not retrievable, so `console.log` from inside a render is effectively write
--only. Every answer therefore carries `handoff`: `{ "mode": "activation" }` or `{ "mode": "web" }` on a `202`, and
-`{ "mode": "inline", "reason": "…" }` on a `200`, where the reason says why each route refused. A caller that sees
-`inline` is looking at the one case that makes it wait, with the explanation attached.
-
-**Renders are never lost to a failed hand-off.** Off the platform — the dev server, the test suite — neither route is
-configured, and if both refuse the function falls back to drawing while the caller waits, which is the old behaviour:
-the platform cuts the caller off at 40 seconds and the render finishes anyway.
+**Renders are never lost to a failed hand-off.** Off Lambda — the dev server, the test suite — there is no function to
+invoke, so the function draws while the caller waits and answers without `handoff`. On Lambda, a refused invocation
+falls back to the same, and the render finishes within the function's timeout even after the caller has given up.
 
 **This is why the caller chooses the uuid.** The object location is known before the render starts, so a `202` costs
 the caller nothing: it polls `<prefix><uuid>.<ext>` in the bucket until the object appears. A render that fails after
@@ -210,34 +209,32 @@ silently honoured.
 
 ### Where the postcards land
 
-The upload is a plain signed `PUT` against the Spaces S3 API, so the function keeps its zero runtime dependencies —
-`src/spaces.ts` signs SigV4 with `node:crypto` rather than carrying an AWS SDK.
+The upload is a plain signed `PUT` against the S3 API, so the function keeps its zero runtime dependencies —
+`src/s3.ts` signs SigV4 with `node:crypto` rather than carrying an AWS SDK. It signs with the temporary credentials
+Lambda gives the function's role (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`), which may put
+objects under the prefix and nothing else.
 
-| Variable          | Default                                             | Meaning                                        |
-| ----------------- | --------------------------------------------------- | ---------------------------------------------- |
-| `SPACES_BUCKET`   | — (required)                                        | Bucket the postcards are stored in.            |
-| `SPACES_KEY`      | — (required)                                        | Spaces access key.                             |
-| `SPACES_SECRET`   | — (required)                                        | Spaces secret key.                             |
-| `SPACES_REGION`   | `fra1`                                              | Region, used for the endpoint and the SigV4 scope. |
-| `SPACES_ENDPOINT` | `https://$SPACES_BUCKET.$SPACES_REGION.digitaloceanspaces.com` | Override, so the suite can stand a bucket in. |
-| `SPACES_PUBLIC_BASE_URL` | `$SPACES_ENDPOINT`                           | Base url reported to readers. A CNAME in production. |
-| `SPACES_PREFIX`   | `postcards/`                                        | Key prefix. Empty stores at the bucket root.   |
-| `SPACES_ACL`      | `public-read`                                       | ACL every object is stored with.               |
+| Variable             | Default                                          | Meaning                                            |
+| -------------------- | ------------------------------------------------ | -------------------------------------------------- |
+| `S3_BUCKET`          | — (required)                                     | Bucket the postcards are stored in.                |
+| `S3_REGION`          | `$AWS_REGION`                                    | Region, used for the endpoint and the SigV4 scope. |
+| `S3_ENDPOINT`        | `https://$S3_BUCKET.s3.$S3_REGION.amazonaws.com` | Override, so the suite can stand a bucket in.      |
+| `S3_PUBLIC_BASE_URL` | `$S3_ENDPOINT`                                   | Base url reported to readers. CloudFront in production. |
+| `S3_PREFIX`          | `postcards/`                                     | Key prefix. Empty stores at the bucket root.       |
 
 Objects are named `<prefix><uuid>.<ext>`, where the extension follows the format: `jpeg` is stored as `.jpg`, `png` as
 `.png`. The uuid is lowercased and validated as a uuid and nothing else, so a caller cannot shape a key out of it.
 
-The upload is signed against `SPACES_ENDPOINT` while the `url` in the answer is built from
-`SPACES_PUBLIC_BASE_URL`, which is `https://postcards.mypreflight.io` in production. SigV4 signs the host, so the
-bucket endpoint is the one that has to be signed; the CNAME only ever serves reads. Left unset, the two are the same
-and readers are pointed at the bucket directly.
+The upload is signed against `S3_ENDPOINT` while the `url` in the answer is built from `S3_PUBLIC_BASE_URL`, which is
+`https://postcards.mypreflight.io` in production. SigV4 signs the host, so the bucket endpoint is the one that has to be
+signed; the CloudFront domain only ever serves reads. Left unset, the two are the same and readers are pointed at the
+bucket directly.
 
-`SPACES_ACL` is `public-read` because the platform shows the artwork to users straight from the bucket. Set it to
-`private` if the backend should serve the bytes itself, and the `url` in the response then needs signing to be
-readable.
+The bucket is private and enforces bucket-owner ownership, so uploads carry no ACL. Readers get the art through
+CloudFront at `postcards.mypreflight.io`, which reads the bucket through origin access control.
 
-Missing any required variable answers `500 MISCONFIGURED` naming the variable, rather than failing opaquely at the
-platform level.
+Missing any required variable answers `500 MISCONFIGURED` naming the variable, rather than failing as an opaque Lambda
+error.
 
 ### The city is part of the prompt
 
@@ -251,41 +248,39 @@ reaches OpenAI, so a bad argument costs nothing.
 This project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ```shell
-npm version 1.2.0 --no-git-tag-version --prefix packages/postcard/city
+npm version 2.1.0 --no-git-tag-version
 ```
 
 `integrity` fails the build if the manifest and the lock file disagree, and the version it agrees on is the one the
 release workflow tags.
 
 This project has configured continuous integration and continuous deployment pipelines. It uses GitHub Actions to
-automatically build, test and deploy the app to the DigitalOcean. You can find the configuration in `.github/workflows`
+automatically build, test and deploy the function to AWS Lambda. You can find the configuration in `.github/workflows`
 directory.
 
-First deployment needs the component adding to the app spec, together with four secrets: `POSTCARD_FUNCTION_SECRET`,
-`OPENAI_API_KEY`, `SPACES_KEY` and `SPACES_SECRET`. Everything else the function reads is set as a literal in
-`project.yml` — only what appears in a package `environment:` block reaches the runtime, so a variable set on the
-component and absent there has no effect.
+The infrastructure is an OpenTofu stack in `infra/`: the function on `nodejs24.x` and `arm64` with its Function URL,
+role and log group, the S3 bucket, and CloudFront with its certificate for `postcards.mypreflight.io`. `./zip.sh` builds
+the bundle in Docker into `dist.zip`, which the stack deploys. Every pull request plans the stack through
+`dflook/tofu-plan`, and a merge to `main` tags the version and applies it through `dflook/tofu-apply` in the
+`production` environment.
 
-`POSTCARD_PUBLIC_URL` is one of those literals and it is the function's own address, so it has to match where the app
-routes this component: the ingress rule for `postcard-generator` on the app's default domain, plus `/postcard/city`.
-Get it wrong and the second hand-off route refuses, which shows up as `handoff.mode: "inline"` in every answer rather
-than as a broken deployment.
+The stack generates the function secret with `random_password` and publishes the Function URL at the SSM parameter
+`/mypreflight/postcard-generator/url` and the secret at `/mypreflight/postcard-generator/secret`, where the backend's
+stack reads them. The one secret it is given is `OPENAI_API_KEY`, stored on the `production` environment and written to
+SSM as a write-only value, so it never lands in a plan.
 
-App Platform rebuilds the component whenever `main` moves, so the workflow here only tags the version and drafts the
-GitHub release. There is no image and no registry: App Platform builds from this repository using `project.yml`.
-
-Everything runs in Docker, in the `city` service:
+Everything runs in Docker, in the `app` service:
 
 ```shell
-docker compose exec city npm test
-docker compose exec city npm run test:functional
-docker compose exec city npm run typecheck
-docker compose exec city npm run lint
-docker compose exec city npm run build
+docker compose exec app npm test
+docker compose exec app npm run test:functional
+docker compose exec app npm run typecheck
+docker compose exec app npm run lint
+docker compose exec app npm run bundle
 ```
 
-The functional suite drives the real entry point against a mockserver standing in for OpenAI, so the retry, cache,
-validation and error-mapping behaviour is covered without an API key and without a bill.
+The functional suite drives the real entry point against a mockserver standing in for OpenAI and the bucket, so the
+retry, cache, validation and error-mapping behaviour is covered without an API key and without a bill.
 
 ## Contact
 
@@ -334,7 +329,7 @@ paid for it.
 [openai-url]: https://platform.openai.com
 [docker-badge]: https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white
 [docker-url]: https://www.docker.com
-[docs-limits]: https://docs.digitalocean.com/products/functions/details/limits/
+[docs-limits]: https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html
 [webp-bug]: https://github.com/openai/openai-node/issues/1850
 [biome-badge]: https://img.shields.io/badge/Biome-60A5FA?style=for-the-badge&logo=biome&logoColor=white
 [biome-url]: https://biomejs.dev

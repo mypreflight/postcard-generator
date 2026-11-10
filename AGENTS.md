@@ -18,8 +18,9 @@ If this file or the code contradicts the knowledge base, the knowledge base take
 Keep this short. Anything shared between repos belongs in the knowledge base.
 
 - Run locally: `cp .env.dist .env`, then `docker compose up -d --build`. Compose also starts an OpenAI mock, so local runs cost nothing.
-- Test: `docker compose exec city npm run lint`, `npm run typecheck`, `npm test` and the functional tests.
-- Deploy: bump the version with `npm version <x.y.z> --no-git-tag-version --prefix packages/postcard/city`. Merging to `main` tags the version; App Platform builds from `project.yml`.
+- Test: `docker compose exec app npm run lint`, `npm run typecheck`, `npm test` and `npm run test:functional`.
+- Deploy: bump the version with `npm version <x.y.z> --no-git-tag-version`. Merging to `main` tags the version and applies the OpenTofu stack in `infra/` (`dflook/tofu-apply`, `production` environment), which deploys `dist.zip` from `./zip.sh` to the Lambda function. Pull requests run `tofu plan`.
+- The Function URL is public; `src/lambda.ts` refuses anything without `Authorization: Bearer <POSTCARD_FUNCTION_SECRET>`. The stack generates the secret and publishes it with the URL at SSM `/mypreflight/postcard-generator/secret` and `/url`. Logs are in CloudWatch, `/aws/lambda/postcard-generator`.
 - Every real render costs money. Refuse malformed input before calling the image API.
 - Postcards are the one deliberate exception to "no AI-generated content" in MyPreflight. Don't extend AI generation elsewhere without a decision in the knowledge base.
 
